@@ -59,6 +59,25 @@ function App() {
     }
   }
 
+  function handleDeleteStarColor(id: string) {
+    const starColor = data.starColors.find((c) => c.id === id);
+    if (!starColor) return;
+    const usageCount = data.cards.reduce((count, card) => {
+      const cardHit = card.starColorId === id ? 1 : 0;
+      const itemHits = card.items.filter((i) => i.starColorId === id).length;
+      return count + cardHit + itemHits;
+    }, 0);
+    const usageNote =
+      usageCount > 0
+        ? ` It's currently used on ${usageCount} star${usageCount === 1 ? "" : "s"}, which will be cleared.`
+        : "";
+    if (
+      window.confirm(`Delete the "${starColor.name}" star color?${usageNote}`)
+    ) {
+      void data.removeStarColor(id);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-app-light dark:bg-app-dark">
       <Header
@@ -117,13 +136,17 @@ function App() {
 
       <StarColorOverlay
         open={starColorsOpen}
-        onClose={() => setStarColorsOpen(false)}
+        onClose={() => {
+          setStarColorsOpen(false);
+          data.reorderStarColors();
+        }}
         starColors={data.starColors}
         activeStarColorId={data.activeStarColorId}
         onSelectActive={data.setActiveStarColorId}
         onCreate={(name, color) => void data.createStarColor(name, color)}
         onUpdate={(id, updates) => void data.updateStarColor(id, updates)}
-        onDelete={(id) => void data.removeStarColor(id)}
+        onReorder={data.reorderStarColors}
+        onDelete={handleDeleteStarColor}
       />
     </div>
   );

@@ -33,6 +33,26 @@ const CARD_MIN_HEIGHT = 300;
 /** matches <main>'s bottom padding (py-6) in App.tsx, plus a little breathing room */
 const BOTTOM_PAGE_SPACE = 32;
 
+/** Walks up from the wheel event's target (stopping at `boundary`) looking
+ * for an element that both opts into vertical scrolling and actually
+ * overflows -- as opposed to one that merely has `overflow-y-auto` set but
+ * fits its content. */
+function findScrollableAncestor(
+  target: EventTarget | null,
+  boundary: HTMLElement,
+): HTMLElement | null {
+  let el = target instanceof HTMLElement ? target : null;
+  while (el && el !== boundary) {
+    const style = window.getComputedStyle(el);
+    const scrollsY = style.overflowY === "auto" || style.overflowY === "scroll";
+    if (scrollsY && el.scrollHeight > el.clientHeight + 1) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
 const variants = {
   enter: (dir: number) => ({
     y: dir > 0 ? 26 : -26,
@@ -116,6 +136,21 @@ export function CardStack({
     const el = containerRef.current;
     if (!el) return;
     function onWheel(e: WheelEvent) {
+      // If the wheel is over a genuinely overflowing area (a long
+      // question/answer list), that area owns the wheel entirely -- it just
+      // scrolls, and never flips the card. To go to the next card while
+      // hovering scrollable content, use the Prev/Next buttons, arrow keys,
+      // or move off the list first. The scroll is applied manually (rather
+      // than left to the browser's default action) since the stack's layered
+      // absolute positioning can otherwise confuse the browser's scroll
+      // hit-testing.
+      const scrollable = findScrollableAncestor(e.target, el as HTMLElement);
+      if (scrollable) {
+        e.preventDefault();
+        scrollable.scrollTop += e.deltaY;
+        return;
+      }
+
       e.preventDefault();
       if (Math.abs(e.deltaY) < 8) return;
       navigate(e.deltaY > 0 ? 1 : -1);

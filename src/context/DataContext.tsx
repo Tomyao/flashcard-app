@@ -41,6 +41,8 @@ interface DataContextValue {
     id: string,
     updates: { name?: string; color?: string },
   ) => Promise<void>;
+  /** Re-applies default-first + alphabetical order; call once an edit is committed (e.g. on blur). */
+  reorderStarColors: () => void;
   removeStarColor: (id: string) => Promise<void>;
 }
 
@@ -48,6 +50,18 @@ const DataContext = createContext<DataContextValue | null>(null);
 
 function uid(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+/** Keeps the built-in default (No Category / Default star color) pinned to
+ * the top, with everything else alphabetical below it. Re-applied after
+ * every load, create, and rename so the order never drifts. */
+function sortDefaultFirst<T extends { isDefault: boolean; name: string }>(
+  items: T[],
+): T[] {
+  return [...items].sort((a, b) => {
+    if (a.isDefault !== b.isDefault) return Number(b.isDefault) - Number(a.isDefault);
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -65,9 +79,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         db.getCards(),
         db.getStarColors(),
       ]);
-      setCategories(cats);
+      setCategories(sortDefaultFirst(cats));
       setCards(allCards);
-      setStarColors(colors);
+      setStarColors(sortDefaultFirst(colors));
 
       const stored = localStorage.getItem(ACTIVE_STAR_COLOR_KEY);
       const fallback = colors.find((c) => c.isDefault)?.id ?? colors[0]?.id ?? "";
@@ -88,7 +102,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const createCategory = useCallback(async (name: string) => {
     const category: Category = { id: uid("cat"), name, isDefault: false };
     await db.putCategory(category);
-    setCategories((prev) => [...prev, category]);
+    setCategories((prev) => sortDefaultFirst([...prev, category]));
     return category;
   }, []);
 
@@ -99,7 +113,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!existing) return prev;
       const updated = { ...existing, name };
       void db.putCategory(updated);
-      return prev.map((c) => (c.id === id ? updated : c));
+      return sortDefaultFirst(prev.map((c) => (c.id === id ? updated : c)));
     });
   }, []);
 
@@ -228,12 +242,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const createStarColor = useCallback(async (name: string, color: string) => {
     const starColor: StarColor = { id: uid("star"), name, color, isDefault: false };
     await db.putStarColor(starColor);
-    setStarColors((prev) => [...prev, starColor]);
+    setStarColors((prev) => sortDefaultFirst([...prev, starColor]));
     return starColor;
   }, []);
 
   const updateStarColor = useCallback(
     async (id: string, updates: { name?: string; color?: string }) => {
+      // Deliberately doesn't re-sort here: the name field updates on every
+      // keystroke, and resorting mid-edit would make the row jump around
+      // while the user is still typing. reorderStarColors() settles it once
+      // editing is done (see StarColorOverlay's onBlur).
       setStarColors((prev) => {
         const existing = prev.find((c) => c.id === id);
         if (!existing) return prev;
@@ -248,6 +266,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const reorderStarColors = useCallback(() => {
+    setStarColors((prev) => sortDefaultFirst(prev));
+  }, []);
 
   const removeStarColor = useCallback(
     async (id: string) => {
@@ -289,6 +311,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       toggleQuestionStar,
       createStarColor,
       updateStarColor,
+      reorderStarColors,
       removeStarColor,
     }),
     [
@@ -307,6 +330,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       toggleQuestionStar,
       createStarColor,
       updateStarColor,
+      reorderStarColors,
       removeStarColor,
     ],
   );

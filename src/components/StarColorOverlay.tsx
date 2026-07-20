@@ -10,6 +10,7 @@ interface StarColorOverlayProps {
   onSelectActive: (id: string) => void;
   onCreate: (name: string, color: string) => void;
   onUpdate: (id: string, updates: { name?: string; color?: string }) => void;
+  onReorder: () => void;
   onDelete: (id: string) => void;
 }
 
@@ -21,6 +22,7 @@ export function StarColorOverlay({
   onSelectActive,
   onCreate,
   onUpdate,
+  onReorder,
   onDelete,
 }: StarColorOverlayProps) {
   const [newName, setNewName] = useState("");
@@ -90,6 +92,7 @@ export function StarColorOverlay({
                 type="text"
                 value={sc.name}
                 onChange={(e) => onUpdate(sc.id, { name: e.target.value })}
+                onBlur={onReorder}
                 className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-text-primary-light hover:border-slate-200 focus:border-action focus:outline-none dark:text-text-primary-dark dark:hover:border-slate-700"
               />
               {sc.id === activeStarColorId && (
