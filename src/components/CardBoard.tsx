@@ -1,6 +1,6 @@
 import type { Category, FlashCard, StarColor } from "../types";
 import { NO_CATEGORY_ID } from "../types";
-import { CardTile } from "./CardTile";
+import { CardStack } from "./CardStack";
 
 interface CardBoardProps {
   cards: FlashCard[];
@@ -35,66 +35,27 @@ export function CardBoard({
   onEditCard,
   onDeleteCard,
 }: CardBoardProps) {
-  const baseCards = starredOnly ? cards.filter(isStarred) : cards;
-
-  function renderGrid(list: FlashCard[]) {
-    return (
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {list.map((card) => (
-          <CardTile
-            key={card.id}
-            card={card}
-            categories={categories}
-            starColors={starColors}
-            onToggleCardStar={() => onToggleCardStar(card.id)}
-            onToggleQuestionStar={(qaId) => onToggleQuestionStar(card.id, qaId)}
-            onEdit={() => onEditCard(card)}
-            onDelete={() => onDeleteCard(card.id)}
-          />
-        ))}
-      </div>
+  const deck = cards
+    .filter((c) => (starredOnly ? isStarred(c) : true))
+    .filter((c) =>
+      selectedCategoryId === "all" ? true : matchesCategory(c, selectedCategoryId),
     );
-  }
 
-  if (selectedCategoryId !== "all") {
-    const filtered = baseCards.filter((c) => matchesCategory(c, selectedCategoryId));
-    if (filtered.length === 0) {
-      return <EmptyState starredOnly={starredOnly} />;
-    }
-    return renderGrid(filtered);
-  }
-
-  const noCategory = categories.find((c) => c.id === NO_CATEGORY_ID);
-  const orderedCategories = [
-    ...(noCategory ? [noCategory] : []),
-    ...categories.filter((c) => c.id !== NO_CATEGORY_ID),
-  ];
-
-  const sections = orderedCategories
-    .map((cat) => ({
-      category: cat,
-      cards: baseCards.filter((c) => matchesCategory(c, cat.id)),
-    }))
-    .filter((section) => section.cards.length > 0);
-
-  if (sections.length === 0) {
+  if (deck.length === 0) {
     return <EmptyState starredOnly={starredOnly} />;
   }
 
   return (
-    <div className="space-y-8">
-      {sections.map(({ category, cards: sectionCards }) => (
-        <section key={category.id}>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-text-secondary-light dark:text-text-secondary-dark">
-            {category.name}
-            <span className="ml-2 text-xs font-normal normal-case text-text-secondary-light/70 dark:text-text-secondary-dark/70">
-              {sectionCards.length} card{sectionCards.length === 1 ? "" : "s"}
-            </span>
-          </h2>
-          {renderGrid(sectionCards)}
-        </section>
-      ))}
-    </div>
+    <CardStack
+      cards={deck}
+      categories={categories}
+      starColors={starColors}
+      resetKey={`${selectedCategoryId}|${starredOnly}`}
+      onToggleCardStar={onToggleCardStar}
+      onToggleQuestionStar={onToggleQuestionStar}
+      onEditCard={onEditCard}
+      onDeleteCard={onDeleteCard}
+    />
   );
 }
 
