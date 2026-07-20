@@ -5,6 +5,7 @@ interface HeaderProps {
   onToggleDark: () => void;
   onOpenStarColors: () => void;
   onOpenNewCard: () => void;
+  activeStarColor: string | null;
 }
 
 export function Header({
@@ -12,6 +13,7 @@ export function Header({
   onToggleDark,
   onOpenStarColors,
   onOpenNewCard,
+  activeStarColor,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-app-light/90 backdrop-blur dark:border-slate-800 dark:bg-app-dark/90">
@@ -30,7 +32,11 @@ export function Header({
             title="Manage star colors"
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-text-secondary-light hover:bg-slate-100 dark:border-slate-700 dark:text-text-secondary-dark dark:hover:bg-slate-800"
           >
-            <Star size={16} />
+            <Star
+              size={16}
+              color={activeStarColor ?? undefined}
+              fill={activeStarColor ?? "none"}
+            />
             <span className="hidden sm:inline">Star Colors</span>
           </button>
           <button

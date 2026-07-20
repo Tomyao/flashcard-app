@@ -64,6 +64,15 @@ function sortDefaultFirst<T extends { isDefault: boolean; name: string }>(
   });
 }
 
+/** Cards are edited in a modal rather than in place, so -- unlike star
+ * colors -- there's no live-typing row to disturb; safe to re-sort
+ * immediately whenever a topic is created or changed. */
+function sortByTopic(items: FlashCard[]): FlashCard[] {
+  return [...items].sort((a, b) =>
+    a.topic.localeCompare(b.topic, undefined, { sensitivity: "base" }),
+  );
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -80,7 +89,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         db.getStarColors(),
       ]);
       setCategories(sortDefaultFirst(cats));
-      setCards(allCards);
+      setCards(sortByTopic(allCards));
       setStarColors(sortDefaultFirst(colors));
 
       const stored = localStorage.getItem(ACTIVE_STAR_COLOR_KEY);
@@ -177,9 +186,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         result = updated;
         void db.putCard(updated);
-        return existing
+        const next = existing
           ? prev.map((c) => (c.id === updated.id ? updated : c))
           : [...prev, updated];
+        return sortByTopic(next);
       });
       return result;
     },

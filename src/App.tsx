@@ -85,6 +85,10 @@ function App() {
         onToggleDark={toggleDark}
         onOpenStarColors={() => setStarColorsOpen(true)}
         onOpenNewCard={openNewCard}
+        activeStarColor={
+          data.starColors.find((c) => c.id === data.activeStarColorId)
+            ?.color ?? null
+        }
       />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -123,14 +127,6 @@ function App() {
         onCreateCategory={data.createCategory}
         onSave={(input) =>
           void data.saveCard({ id: editingCard?.id, ...input })
-        }
-        onDeleteCard={
-          editingCard
-            ? () => {
-                setEditorOpen(false);
-                handleDeleteCard(editingCard.id);
-              }
-            : undefined
         }
       />
 

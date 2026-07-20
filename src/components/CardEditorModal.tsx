@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import type { Category, FlashCard } from "../types";
 import { NO_CATEGORY_ID } from "../types";
@@ -7,6 +7,37 @@ interface DraftItem {
   id: string;
   question: string;
   answer: string;
+}
+
+interface AutoGrowTextareaProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}
+
+/** A single-line-by-default textarea that grows to fit its content, so a
+ * long question or answer stays fully readable instead of scrolling off
+ * to the side the way a single-line input would. */
+function AutoGrowTextarea({ value, onChange, placeholder }: AutoGrowTextareaProps) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full resize-none overflow-hidden rounded-md border border-slate-200 bg-transparent px-2.5 py-1.5 text-sm text-text-primary-light focus:border-action focus:outline-none dark:border-slate-700 dark:text-text-primary-dark"
+    />
+  );
 }
 
 interface CardEditorModalProps {
@@ -20,7 +51,6 @@ interface CardEditorModalProps {
     categoryIds: string[];
     items: Array<{ id?: string; question: string; answer: string }>;
   }) => void;
-  onDeleteCard?: () => void;
 }
 
 function toDraftItems(card: FlashCard | null): DraftItem[] {
@@ -41,7 +71,6 @@ export function CardEditorModal({
   categories,
   onCreateCategory,
   onSave,
-  onDeleteCard,
 }: CardEditorModalProps) {
   const [topic, setTopic] = useState(card?.topic ?? "");
   const [categoryIds, setCategoryIds] = useState<string[]>(
@@ -208,19 +237,9 @@ export function CardEditorModal({
             </button>
           </div>
 
-          <div className="mt-5 flex items-center justify-between">
-            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-              Questions &amp; Answers
-            </label>
-            <button
-              type="button"
-              onClick={addItem}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-action/10 px-2.5 py-1 text-xs font-medium text-action hover:bg-action/20"
-            >
-              <Plus size={13} />
-              Add pair
-            </button>
-          </div>
+          <label className="mt-5 block text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+            Questions &amp; Answers
+          </label>
 
           <ol className="mt-2 space-y-3">
             {items.map((item, index) => (
@@ -233,23 +252,15 @@ export function CardEditorModal({
                     {index + 1}.
                   </span>
                   <div className="min-w-0 flex-1 space-y-2">
-                    <input
-                      type="text"
+                    <AutoGrowTextarea
                       value={item.question}
-                      onChange={(e) =>
-                        updateItem(item.id, "question", e.target.value)
-                      }
+                      onChange={(value) => updateItem(item.id, "question", value)}
                       placeholder="Question"
-                      className="w-full rounded-md border border-slate-200 bg-transparent px-2.5 py-1.5 text-sm text-text-primary-light focus:border-action focus:outline-none dark:border-slate-700 dark:text-text-primary-dark"
                     />
-                    <input
-                      type="text"
+                    <AutoGrowTextarea
                       value={item.answer}
-                      onChange={(e) =>
-                        updateItem(item.id, "answer", e.target.value)
-                      }
+                      onChange={(value) => updateItem(item.id, "answer", value)}
                       placeholder="Answer"
-                      className="w-full rounded-md border border-slate-200 bg-transparent px-2.5 py-1.5 text-sm text-text-primary-light focus:border-action focus:outline-none dark:border-slate-700 dark:text-text-primary-dark"
                     />
                   </div>
                   <button
@@ -264,37 +275,32 @@ export function CardEditorModal({
               </li>
             ))}
           </ol>
+
+          <button
+            type="button"
+            onClick={addItem}
+            className="mt-3 inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-action/40 bg-action/5 px-2.5 py-2 text-sm font-medium text-action hover:bg-action/10"
+          >
+            <Plus size={14} />
+            Add pair
+          </button>
         </form>
 
-        <div className="flex items-center justify-between gap-2 border-t border-slate-200 p-4 dark:border-slate-700">
-          {card && onDeleteCard ? (
-            <button
-              type="button"
-              onClick={onDeleteCard}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-error hover:bg-error/10"
-            >
-              <Trash2 size={15} />
-              Delete card
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={resetAndClose}
-              className="cursor-pointer rounded-lg border border-slate-200 px-3.5 py-2 text-sm font-medium text-text-secondary-light hover:bg-slate-100 dark:border-slate-700 dark:text-text-secondary-dark dark:hover:bg-slate-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="card-editor-form"
-              className="cursor-pointer rounded-lg bg-action px-3.5 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              {card ? "Save Changes" : "Create Card"}
-            </button>
-          </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 p-4 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={resetAndClose}
+            className="cursor-pointer rounded-lg border border-slate-200 px-3.5 py-2 text-sm font-medium text-text-secondary-light hover:bg-slate-100 dark:border-slate-700 dark:text-text-secondary-dark dark:hover:bg-slate-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="card-editor-form"
+            className="cursor-pointer rounded-lg bg-action px-3.5 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            {card ? "Save Changes" : "Create Card"}
+          </button>
         </div>
       </div>
     </div>
