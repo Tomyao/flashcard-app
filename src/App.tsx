@@ -7,14 +7,18 @@ import { StarColorOverlay } from "./components/StarColorOverlay";
 import { Toast } from "./components/Toast";
 import { useData } from "./context/DataContext";
 import { useDarkMode } from "./hooks/useDarkMode";
-import type { FlashCard } from "./types";
+import type { FlashCard, StarFilterState } from "./types";
 
 function App() {
   const data = useData();
   const [isDark, toggleDark] = useDarkMode();
 
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
-  const [starredOnly, setStarredOnly] = useState(false);
+  const [starFilter, setStarFilter] = useState<StarFilterState>({
+    colorIds: new Set(),
+    scope: "both",
+    unstarred: false,
+  });
   const [starColorsOpen, setStarColorsOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<FlashCard | null>(null);
@@ -77,7 +81,30 @@ function App() {
       window.confirm(`Delete the "${starColor.name}" star color?${usageNote}`)
     ) {
       void data.removeStarColor(id);
+      setStarFilter((prev) => {
+        if (!prev.colorIds.has(id)) return prev;
+        const next = new Set(prev.colorIds);
+        next.delete(id);
+        return { ...prev, colorIds: next };
+      });
     }
+  }
+
+  function toggleStarFilterColor(id: string) {
+    setStarFilter((prev) => {
+      const next = new Set(prev.colorIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...prev, colorIds: next, unstarred: false };
+    });
+  }
+
+  function toggleStarFilterUnstarred() {
+    setStarFilter((prev) => ({
+      ...prev,
+      colorIds: prev.unstarred ? prev.colorIds : new Set(),
+      unstarred: !prev.unstarred,
+    }));
   }
 
   return (
@@ -99,8 +126,23 @@ function App() {
           selectedCategoryId={selectedCategoryId}
           onSelectCategory={setSelectedCategoryId}
           onDeleteCategory={handleDeleteCategory}
-          starredOnly={starredOnly}
-          onToggleStarredOnly={() => setStarredOnly((prev) => !prev)}
+          starColors={data.starColors}
+          starFilter={starFilter}
+          onToggleStarFilterColor={toggleStarFilterColor}
+          onSelectAllStarFilterColors={() =>
+            setStarFilter((prev) => ({
+              ...prev,
+              colorIds: new Set(data.starColors.map((c) => c.id)),
+              unstarred: false,
+            }))
+          }
+          onClearStarFilterColors={() =>
+            setStarFilter((prev) => ({ ...prev, colorIds: new Set() }))
+          }
+          onChangeStarFilterScope={(scope) =>
+            setStarFilter((prev) => ({ ...prev, scope }))
+          }
+          onToggleStarFilterUnstarred={toggleStarFilterUnstarred}
         />
 
         <div className="mt-6">
@@ -109,7 +151,7 @@ function App() {
             categories={data.categories}
             starColors={data.starColors}
             selectedCategoryId={selectedCategoryId}
-            starredOnly={starredOnly}
+            starFilter={starFilter}
             onToggleCardStar={(cardId) => void data.toggleCardStar(cardId)}
             onToggleQuestionStar={(cardId, qaId) =>
               void data.toggleQuestionStar(cardId, qaId)

@@ -35,3 +35,14 @@ export interface Category {
 }
 
 export const NO_CATEGORY_ID = "no-category";
+
+export type StarFilterScope = "questions" | "cards" | "both";
+
+export interface StarFilterState {
+  /** ids of StarColor to filter by; empty means the filter is off (show everything) */
+  colorIds: Set<string>;
+  /** where a matching star must appear */
+  scope: StarFilterScope;
+  /** show only items with NO star at all -- mutually exclusive with colorIds */
+  unstarred: boolean;
+}

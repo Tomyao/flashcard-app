@@ -1,4 +1,4 @@
-import type { Category, FlashCard, StarColor } from "../types";
+import type { Category, FlashCard, StarColor, StarFilterState } from "../types";
 import { NO_CATEGORY_ID } from "../types";
 import { CardStack } from "./CardStack";
 
@@ -7,15 +7,40 @@ interface CardBoardProps {
   categories: Category[];
   starColors: StarColor[];
   selectedCategoryId: string;
-  starredOnly: boolean;
+  starFilter: StarFilterState;
   onToggleCardStar: (cardId: string) => void;
   onToggleQuestionStar: (cardId: string, qaId: string) => void;
   onEditCard: (card: FlashCard) => void;
   onDeleteCard: (cardId: string) => void;
 }
 
-function isStarred(card: FlashCard): boolean {
-  return card.starColorId !== null || card.items.some((i) => i.starColorId !== null);
+function matchesStarFilter(card: FlashCard, filter: StarFilterState): boolean {
+  if (filter.unstarred) {
+    const cardUnstarred = card.starColorId === null;
+    const questionsUnstarred = card.items.every((i) => i.starColorId === null);
+    switch (filter.scope) {
+      case "cards":
+        return cardUnstarred;
+      case "questions":
+        return questionsUnstarred;
+      case "both":
+        return cardUnstarred && questionsUnstarred;
+    }
+  }
+  if (filter.colorIds.size === 0) return true;
+  const cardMatch =
+    card.starColorId !== null && filter.colorIds.has(card.starColorId);
+  const questionMatch = card.items.some(
+    (i) => i.starColorId !== null && filter.colorIds.has(i.starColorId),
+  );
+  switch (filter.scope) {
+    case "cards":
+      return cardMatch;
+    case "questions":
+      return questionMatch;
+    case "both":
+      return cardMatch || questionMatch;
+  }
 }
 
 function matchesCategory(card: FlashCard, categoryId: string): boolean {
@@ -29,28 +54,32 @@ export function CardBoard({
   categories,
   starColors,
   selectedCategoryId,
-  starredOnly,
+  starFilter,
   onToggleCardStar,
   onToggleQuestionStar,
   onEditCard,
   onDeleteCard,
 }: CardBoardProps) {
   const deck = cards
-    .filter((c) => (starredOnly ? isStarred(c) : true))
+    .filter((c) => matchesStarFilter(c, starFilter))
     .filter((c) =>
       selectedCategoryId === "all" ? true : matchesCategory(c, selectedCategoryId),
     );
 
+  const starFilterActive = starFilter.colorIds.size > 0 || starFilter.unstarred;
+
   if (deck.length === 0) {
-    return <EmptyState starredOnly={starredOnly} />;
+    return <EmptyState starFilterActive={starFilterActive} />;
   }
+
+  const resetKey = `${selectedCategoryId}|${starFilter.scope}|${starFilter.unstarred}|${[...starFilter.colorIds].sort().join(",")}`;
 
   return (
     <CardStack
       cards={deck}
       categories={categories}
       starColors={starColors}
-      resetKey={`${selectedCategoryId}|${starredOnly}`}
+      resetKey={resetKey}
       onToggleCardStar={onToggleCardStar}
       onToggleQuestionStar={onToggleQuestionStar}
       onEditCard={onEditCard}
@@ -59,12 +88,12 @@ export function CardBoard({
   );
 }
 
-function EmptyState({ starredOnly }: { starredOnly: boolean }) {
+function EmptyState({ starFilterActive }: { starFilterActive: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 py-16 text-center dark:border-slate-700">
       <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-        {starredOnly
-          ? "No starred topics or questions here yet."
+        {starFilterActive
+          ? "No cards match the current star filter."
           : "No flashcards here yet."}
       </p>
     </div>

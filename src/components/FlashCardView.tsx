@@ -40,8 +40,7 @@ export function FlashCardView({
         {/* FRONT */}
         <div
           className="flip-face absolute inset-0 flex flex-col rounded-2xl border border-slate-200 bg-surface-light p-5 shadow-lg dark:border-slate-700 dark:bg-surface-dark"
-          style={flipped ? { pointerEvents: "none" } : undefined}
-          aria-hidden={flipped}
+          inert={flipped}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -121,8 +120,7 @@ export function FlashCardView({
         {/* BACK */}
         <div
           className="flip-face flip-face-back absolute inset-0 flex flex-col rounded-2xl border border-slate-200 bg-surface-light p-5 shadow-lg dark:border-slate-700 dark:bg-surface-dark"
-          style={!flipped ? { pointerEvents: "none" } : undefined}
-          aria-hidden={!flipped}
+          inert={!flipped}
         >
           <div className="flex items-start justify-between gap-2">
             <h3 className="truncate text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
