@@ -162,23 +162,28 @@ export function FlashCardView({
                 </div>
               </div>
             ) : (
-              <ol className="space-y-3">
+              <ol className="space-y-4">
                 {card.items.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60"
-                  >
+                  <li key={item.id}>
                     <div className="flex items-start gap-2">
                       <span className="text-sm font-medium text-action">
                         {item.number}.
                       </span>
-                      <span className="flex-1 text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                      <p className="flex-1 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
                         {item.question}
-                      </span>
+                      </p>
+                      <StarButton
+                        starColorId={item.starColorId}
+                        starColors={starColors}
+                        onToggle={() => onToggleQuestionStar(item.id)}
+                        title="Star this question"
+                      />
                     </div>
-                    <p className="mt-1 pl-5 text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-                      {item.answer}
-                    </p>
+                    <div className="mt-2 rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/60">
+                      <p className="text-base font-medium text-text-primary-light dark:text-text-primary-dark">
+                        {item.answer}
+                      </p>
+                    </div>
                   </li>
                 ))}
               </ol>

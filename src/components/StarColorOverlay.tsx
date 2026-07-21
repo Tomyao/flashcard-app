@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Plus, Star, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Star, Trash2, X } from "lucide-react";
 import type { StarColor } from "../types";
 
 interface StarColorOverlayProps {
@@ -24,23 +24,27 @@ interface StarColorNameFieldProps {
   onDuplicate: () => void;
 }
 
-/** Renames on blur rather than on every keystroke, so a duplicate name can
- * be caught and reverted instead of being committed live as the user types. */
+/** Displays the name as plain text -- so clicking it selects the color like
+ * the rest of the row -- with a dedicated pencil icon to switch into an
+ * editable field. Renames commit on blur/Enter rather than on every
+ * keystroke, so a duplicate name can be caught and reverted instead of
+ * being committed live as the user types. */
 function StarColorNameField({
   starColor,
   starColors,
   onRename,
   onDuplicate,
 }: StarColorNameFieldProps) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(starColor.name);
-  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
-    if (!focused) setDraft(starColor.name);
-  }, [starColor.name, focused]);
+    if (!editing) setDraft(starColor.name);
+  }, [starColor.name, editing]);
 
   function commit() {
     const trimmed = draft.trim();
+    setEditing(false);
     if (!trimmed || trimmed === starColor.name) {
       setDraft(starColor.name);
       return;
@@ -56,18 +60,46 @@ function StarColorNameField({
     onRename(starColor.id, trimmed);
   }
 
+  if (editing) {
+    return (
+      <input
+        type="text"
+        value={draft}
+        autoFocus
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            setDraft(starColor.name);
+            setEditing(false);
+          }
+        }}
+        className="min-w-0 flex-1 rounded-md border border-action bg-transparent px-1.5 py-1 text-sm text-text-primary-light focus:outline-none dark:text-text-primary-dark"
+      />
+    );
+  }
+
   return (
-    <input
-      type="text"
-      value={draft}
-      onFocus={() => setFocused(true)}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        setFocused(false);
-        commit();
-      }}
-      className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-text-primary-light hover:border-slate-200 focus:border-action focus:outline-none dark:text-text-primary-dark dark:hover:border-slate-700"
-    />
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <span className="min-w-0 flex-1 truncate text-sm text-text-primary-light dark:text-text-primary-dark">
+        {starColor.name}
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setEditing(true);
+        }}
+        title="Rename"
+        className="shrink-0 cursor-pointer rounded-full p-1 text-text-secondary-light hover:bg-slate-100 dark:text-text-secondary-dark dark:hover:bg-slate-800"
+      >
+        <Pencil size={13} />
+      </button>
+    </div>
   );
 }
 
@@ -127,11 +159,9 @@ export function StarColorOverlay({
                   : "border-slate-200 dark:border-slate-700"
               }`}
             >
-              <button
-                type="button"
-                onClick={() => onSelectActive(sc.id)}
-                title="Set as active color"
-                className="flex shrink-0 cursor-pointer items-center justify-center"
+              <div
+                className="relative flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center"
+                title="Change color"
               >
                 <Star
                   size={20}
@@ -139,34 +169,48 @@ export function StarColorOverlay({
                   fill={sc.color}
                   strokeWidth={1.5}
                 />
-              </button>
-              <input
-                type="color"
-                value={sc.color}
-                onChange={(e) => onUpdate(sc.id, { color: e.target.value })}
-                className="h-7 w-7 shrink-0 cursor-pointer rounded border border-slate-200 bg-transparent dark:border-slate-700"
-                title="Change color"
-              />
-              <StarColorNameField
-                starColor={sc}
-                starColors={starColors}
-                onRename={(id, name) => {
-                  onUpdate(id, { name });
-                  onReorder();
+                <input
+                  type="color"
+                  value={sc.color}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => onUpdate(sc.id, { color: e.target.value })}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </div>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectActive(sc.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelectActive(sc.id);
+                  }
                 }}
-                onDuplicate={() =>
-                  onRenameError(
-                    "Unable to rename. Another star color already has the same name.",
-                  )
-                }
-              />
-              {sc.id === activeStarColorId && (
-                <Check size={16} className="shrink-0 text-action" />
-              )}
+                title="Set as active color"
+                className="min-w-0 flex-1 cursor-pointer"
+              >
+                <StarColorNameField
+                  starColor={sc}
+                  starColors={starColors}
+                  onRename={(id, name) => {
+                    onUpdate(id, { name });
+                    onReorder();
+                  }}
+                  onDuplicate={() =>
+                    onRenameError(
+                      "Unable to rename. Another star color already has the same name.",
+                    )
+                  }
+                />
+              </div>
               {!sc.isDefault && (
                 <button
                   type="button"
-                  onClick={() => onDelete(sc.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(sc.id);
+                  }}
                   title="Delete color"
                   className="shrink-0 cursor-pointer rounded-full p-1 text-text-secondary-light hover:bg-error/10 hover:text-error dark:text-text-secondary-dark"
                 >

@@ -350,7 +350,12 @@ export function CardStack({
       );
       const steps = Math.max(1, flickSteps, streakSteps);
 
-      e.preventDefault();
+      // touchstart is registered passive (so native scrolling of a card's
+      // question/answer list stays smooth), which means the browser can
+      // commit this whole gesture to a native scroll and mark touchend
+      // non-cancelable -- calling preventDefault on it then would just log
+      // a console warning for no effect, so only do it when it can matter.
+      if (e.cancelable) e.preventDefault();
       if (absY >= absX) {
         navigateBy(dy < 0 ? steps : -steps);
       } else {
