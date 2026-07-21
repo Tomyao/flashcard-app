@@ -78,6 +78,9 @@ export function CardEditorModal({
   );
   const [items, setItems] = useState<DraftItem[]>(() => toDraftItems(card));
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryNameError, setCategoryNameError] = useState<string | null>(
+    null,
+  );
 
   if (!open) return null;
 
@@ -88,6 +91,7 @@ export function CardEditorModal({
     setCategoryIds(card?.categoryIds ?? []);
     setItems(toDraftItems(card));
     setNewCategoryName("");
+    setCategoryNameError(null);
     onClose();
   }
 
@@ -100,9 +104,17 @@ export function CardEditorModal({
   async function handleCreateCategory() {
     const name = newCategoryName.trim();
     if (!name) return;
+    const isDuplicate = categories.some(
+      (c) => c.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (isDuplicate) {
+      setCategoryNameError("A category with this name already exists.");
+      return;
+    }
     const created = await onCreateCategory(name);
     setCategoryIds((prev) => [...prev, created.id]);
     setNewCategoryName("");
+    setCategoryNameError(null);
   }
 
   function updateItem(id: string, field: "question" | "answer", value: string) {
@@ -217,7 +229,10 @@ export function CardEditorModal({
             <input
               type="text"
               value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
+              onChange={(e) => {
+                setNewCategoryName(e.target.value);
+                setCategoryNameError(null);
+              }}
               placeholder="New category name..."
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -236,6 +251,9 @@ export function CardEditorModal({
               Add
             </button>
           </div>
+          {categoryNameError && (
+            <p className="mt-1 text-xs text-error">{categoryNameError}</p>
+          )}
 
           <label className="mt-5 block text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
             Questions &amp; Answers

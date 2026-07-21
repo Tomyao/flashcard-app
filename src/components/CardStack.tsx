@@ -43,16 +43,49 @@ const CARD_MIN_HEIGHT = 300;
  * cards at once -- momentum scrolling rather than one-card-per-tick. */
 const WHEEL_UNITS_PER_CARD = 100;
 /** A trackpad flick delivers wheel events with only a few milliseconds
- * between them; a genuinely new, separate scroll action -- the user having
- * actually stopped and started again -- arrives much later than that. Events
- * closer together than this are treated as the same continuous gesture, so a
- * fast flick keeps carrying through the deck even when it happens to pass
- * over a card with a scrollable question/answer list. Only once the gap
+ * between them. A physical mouse wheel is spinier: repeatedly scrolling fast
+ * means spin, lift the finger back to the top of the wheel, spin again --
+ * and that reposition alone creates a brief gap between bursts of events
+ * even though the user's intent is one continuous fast scroll. This needs to
+ * be generous enough to absorb that natural pause, or the "gesture" reads as
+ * having ended right as it crosses a card with a scrollable list, breaking
+ * the flow into scrolling that list instead of continuing on. A genuinely
+ * new, separate scroll action -- the user actually stopping, not just
+ * resetting their finger -- arrives later than this. Only once the gap
  * exceeds this (the deck has settled) does that list start capturing the
  * wheel to scroll its own content. */
-const MOMENTUM_GAP_MS = 180;
+const MOMENTUM_GAP_MS = 450;
 /** matches <main>'s bottom padding (py-6) in App.tsx, plus a little breathing room */
 const BOTTOM_PAGE_SPACE = 32;
+/** Minimum finger travel, in pixels, for a touch gesture to count as a swipe
+ * rather than a tap. Now that a normal swipe always moves exactly one card
+ * (see STRONG_SWIPE_* / MAX_STREAK_STEPS below), this only needs to filter
+ * out accidental micro-movements, not guard against overshooting -- so it
+ * can stay low without every intentional swipe risking getting ignored. */
+const SWIPE_THRESHOLD_PX = 40;
+/** Swipe distance, in pixels, that covers one card once a swipe is strong
+ * enough to move more than one (see STRONG_SWIPE_* below). */
+const TOUCH_PIXELS_PER_CARD = 90;
+/** A single swipe only moves more than one card if it's a genuinely hard
+ * flick -- either covering a lot of ground or moving very fast -- so a
+ * normal-paced swipe reliably moves exactly one card and never feels like
+ * it's guessing how far to go. */
+const STRONG_SWIPE_DISTANCE_PX = 260;
+const STRONG_SWIPE_VELOCITY_PX_MS = 1.4;
+/** Swiping repeatedly without pausing (within TOUCH_MOMENTUM_GAP_MS of the
+ * last swipe each time) builds up a streak, and the streak -- not any one
+ * swipe's speed -- is what lets rapid, repeated swiping move faster through
+ * a big deck, capped so it never runs away. */
+const MAX_STREAK_STEPS = 5;
+/** Unlike the wheel's stream of many events a few milliseconds apart, each
+ * swipe is one discrete gesture, so "still going" is measured swipe-to-swipe
+ * rather than event-to-event -- someone swiping repeatedly in quick
+ * succession is treated the same continuous motion as a trackpad flick, so
+ * that flow isn't broken just because it happens to pass over a card with a
+ * scrollable list. Only once this much time has passed without a
+ * stack-directed swipe (a real pause) does a scrollable card start
+ * capturing vertical swipes for its own scrolling again. */
+const TOUCH_MOMENTUM_GAP_MS = 600;
 
 /** Walks up from the wheel event's target (stopping at `boundary`) looking
  * for an element that both opts into vertical scrolling and actually
@@ -121,6 +154,15 @@ export function CardStack({
    * continuous stream of events apart from a genuinely new scroll action
    * that starts after the deck has settled. */
   const lastStackWheelAtRef = useRef(0);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(
+    null,
+  );
+  /** Timestamp of the last swipe that was stack-directed, mirroring
+   * lastStackWheelAtRef but for discrete swipe gestures. */
+  const lastStackSwipeAtRef = useRef(0);
+  /** How many stack-directed swipes have landed back-to-back (within
+   * TOUCH_MOMENTUM_GAP_MS of each other), reset to 0 by any real pause. */
+  const swipeStreakRef = useRef(0);
 
   const foundIndex = currentCardId
     ? cards.findIndex((c) => c.id === currentCardId)
@@ -169,16 +211,22 @@ export function CardStack({
     }
   }, [cards, resetKey, currentCardId]);
 
-  const navigate = useCallback(
-    (dir: 1 | -1) => {
-      const next = Math.max(0, Math.min(cards.length - 1, indexRef.current + dir));
+  const navigateBy = useCallback(
+    (steps: number) => {
+      if (steps === 0) return;
+      const next = Math.max(
+        0,
+        Math.min(cards.length - 1, indexRef.current + steps),
+      );
       if (next === indexRef.current) return;
       scrollPosRef.current = next * WHEEL_UNITS_PER_CARD;
-      setDirection(dir);
+      setDirection(steps > 0 ? 1 : -1);
       setCurrentCardId(cards[next]?.id ?? null);
     },
     [cards],
   );
+
+  const navigate = useCallback((dir: 1 | -1) => navigateBy(dir), [navigateBy]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -231,6 +279,92 @@ export function CardStack({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [navigate]);
+
+  // Touch devices have no scroll wheel, so swiping is the equivalent
+  // gesture. Left/right always flips the card, since the question/answer
+  // list never scrolls sideways. Up/down flips the card too, UNLESS the
+  // gesture started over a card whose list is actually scrollable AND the
+  // user has actually paused here -- then vertical swipes are reserved for
+  // scrolling that text instead (never falling through to a card change,
+  // even at the top/bottom), since a touch scroll's whole point is reading
+  // through it a finger-drag at a time. But if they're mid-flow, swiping
+  // repeatedly without a real pause, that scrollable card doesn't interrupt
+  // it -- same as flicking past it keeps going rather than getting stuck.
+  //
+  // A single normal swipe always moves exactly one card, so it stays
+  // predictable and doesn't feel oversensitive. It only moves further when
+  // that's clearly earned: one hard flick (far and/or fast) on its own, or
+  // several swipes in a row without pausing building up speed.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function onTouchStart(e: TouchEvent) {
+      const t = e.touches[0];
+      if (!t) return;
+      touchStartRef.current = { x: t.clientX, y: t.clientY, time: performance.now() };
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      if (!start) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      const dominantAbs = Math.max(absX, absY);
+      if (dominantAbs < SWIPE_THRESHOLD_PX) return;
+
+      const now = performance.now();
+      const isContinuingGesture =
+        now - lastStackSwipeAtRef.current < TOUCH_MOMENTUM_GAP_MS;
+
+      if (absY >= absX) {
+        const scrollable = findScrollableAncestor(e.target, el as HTMLElement);
+        if (scrollable && !isContinuingGesture) return;
+      }
+
+      // A normal swipe always moves exactly one card -- that's the
+      // predictable baseline. It only moves more than that if THIS swipe
+      // was a genuinely hard flick (far or fast), or if it's part of a
+      // streak of swipes happening back-to-back without a pause; either
+      // way the extra speed has to be earned, not the default.
+      swipeStreakRef.current = isContinuingGesture ? swipeStreakRef.current + 1 : 1;
+      lastStackSwipeAtRef.current = now;
+
+      const elapsedMs = Math.max(1, now - start.time);
+      const velocity = dominantAbs / elapsedMs; // px/ms
+      const isStrongMotion =
+        dominantAbs > STRONG_SWIPE_DISTANCE_PX ||
+        velocity > STRONG_SWIPE_VELOCITY_PX_MS;
+      const flickSteps = isStrongMotion
+        ? Math.round(dominantAbs / TOUCH_PIXELS_PER_CARD)
+        : 1;
+      const streakSteps = Math.min(
+        Math.ceil(swipeStreakRef.current / 2),
+        MAX_STREAK_STEPS,
+      );
+      const steps = Math.max(1, flickSteps, streakSteps);
+
+      e.preventDefault();
+      if (absY >= absX) {
+        navigateBy(dy < 0 ? steps : -steps);
+      } else {
+        navigateBy(dx < 0 ? steps : -steps);
+      }
+    }
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchend", onTouchEnd, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [navigateBy]);
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
@@ -350,8 +484,11 @@ export function CardStack({
           </button>
         </div>
 
-        <p className="text-xs text-text-secondary-light/70 dark:text-text-secondary-dark/70">
+        <p className="hidden text-xs text-text-secondary-light/70 sm:block dark:text-text-secondary-dark/70">
           Scroll to flip through the deck
+        </p>
+        <p className="text-xs text-text-secondary-light/70 sm:hidden dark:text-text-secondary-dark/70">
+          Swipe to flip through the deck
         </p>
       </div>
     </div>

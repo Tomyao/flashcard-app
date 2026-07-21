@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Layers, X } from "lucide-react";
+import { ChevronDown, Layers, Trash2 } from "lucide-react";
 import type { Category } from "../types";
 
 interface CategoryDropdownProps {
@@ -135,9 +135,9 @@ function DropdownItem({
             onDelete();
           }}
           title="Delete category"
-          className="shrink-0 cursor-pointer rounded-full p-1 text-text-secondary-light opacity-0 hover:bg-error/10 hover:text-error group-hover:opacity-100 dark:text-text-secondary-dark"
+          className="shrink-0 cursor-pointer rounded-full p-1 text-text-secondary-light opacity-100 hover:bg-error/10 hover:text-error sm:opacity-0 sm:group-hover:opacity-100 dark:text-text-secondary-dark"
         >
-          <X size={13} />
+          <Trash2 size={13} />
         </button>
       )}
     </div>

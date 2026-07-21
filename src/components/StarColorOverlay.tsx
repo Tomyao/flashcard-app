@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Plus, Star, Trash2, X } from "lucide-react";
 import type { StarColor } from "../types";
 
@@ -12,6 +12,63 @@ interface StarColorOverlayProps {
   onUpdate: (id: string, updates: { name?: string; color?: string }) => void;
   onReorder: () => void;
   onDelete: (id: string) => void;
+  /** Surfaces a message in the app-wide toast rather than inline here, so it
+   * stays visible even if the user closes this overlay right after. */
+  onRenameError: (message: string) => void;
+}
+
+interface StarColorNameFieldProps {
+  starColor: StarColor;
+  starColors: StarColor[];
+  onRename: (id: string, name: string) => void;
+  onDuplicate: () => void;
+}
+
+/** Renames on blur rather than on every keystroke, so a duplicate name can
+ * be caught and reverted instead of being committed live as the user types. */
+function StarColorNameField({
+  starColor,
+  starColors,
+  onRename,
+  onDuplicate,
+}: StarColorNameFieldProps) {
+  const [draft, setDraft] = useState(starColor.name);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(starColor.name);
+  }, [starColor.name, focused]);
+
+  function commit() {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === starColor.name) {
+      setDraft(starColor.name);
+      return;
+    }
+    const isDuplicate = starColors.some(
+      (c) => c.id !== starColor.id && c.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (isDuplicate) {
+      onDuplicate();
+      setDraft(starColor.name);
+      return;
+    }
+    onRename(starColor.id, trimmed);
+  }
+
+  return (
+    <input
+      type="text"
+      value={draft}
+      onFocus={() => setFocused(true)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        setFocused(false);
+        commit();
+      }}
+      className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-text-primary-light hover:border-slate-200 focus:border-action focus:outline-none dark:text-text-primary-dark dark:hover:border-slate-700"
+    />
+  );
 }
 
 export function StarColorOverlay({
@@ -24,9 +81,11 @@ export function StarColorOverlay({
   onUpdate,
   onReorder,
   onDelete,
+  onRenameError,
 }: StarColorOverlayProps) {
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("#4f46e5");
+  const [nameError, setNameError] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -88,12 +147,18 @@ export function StarColorOverlay({
                 className="h-7 w-7 shrink-0 cursor-pointer rounded border border-slate-200 bg-transparent dark:border-slate-700"
                 title="Change color"
               />
-              <input
-                type="text"
-                value={sc.name}
-                onChange={(e) => onUpdate(sc.id, { name: e.target.value })}
-                onBlur={onReorder}
-                className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-text-primary-light hover:border-slate-200 focus:border-action focus:outline-none dark:text-text-primary-dark dark:hover:border-slate-700"
+              <StarColorNameField
+                starColor={sc}
+                starColors={starColors}
+                onRename={(id, name) => {
+                  onUpdate(id, { name });
+                  onReorder();
+                }}
+                onDuplicate={() =>
+                  onRenameError(
+                    "Unable to rename. Another star color already has the same name.",
+                  )
+                }
               />
               {sc.id === activeStarColorId && (
                 <Check size={16} className="shrink-0 text-action" />
@@ -113,35 +178,51 @@ export function StarColorOverlay({
         </ul>
 
         <form
-          className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-700"
+          className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"
           onSubmit={(e) => {
             e.preventDefault();
             const name = newName.trim();
             if (!name) return;
+            const isDuplicate = starColors.some(
+              (c) => c.name.toLowerCase() === name.toLowerCase(),
+            );
+            if (isDuplicate) {
+              setNameError("A star color with this name already exists.");
+              return;
+            }
             onCreate(name, newColor);
             setNewName("");
+            setNameError(null);
           }}
         >
-          <input
-            type="color"
-            value={newColor}
-            onChange={(e) => setNewColor(e.target.value)}
-            className="h-9 w-9 shrink-0 cursor-pointer rounded border border-slate-200 bg-transparent dark:border-slate-700"
-          />
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="New color name..."
-            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-transparent px-3 py-1.5 text-sm text-text-primary-light focus:border-action focus:outline-none dark:border-slate-700 dark:text-text-primary-dark"
-          />
-          <button
-            type="submit"
-            className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-action px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-          >
-            <Plus size={15} />
-            Add
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={newColor}
+              onChange={(e) => setNewColor(e.target.value)}
+              className="h-9 w-9 shrink-0 cursor-pointer rounded border border-slate-200 bg-transparent dark:border-slate-700"
+            />
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                setNameError(null);
+              }}
+              placeholder="New color name..."
+              className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-transparent px-3 py-1.5 text-sm text-text-primary-light focus:border-action focus:outline-none dark:border-slate-700 dark:text-text-primary-dark"
+            />
+            <button
+              type="submit"
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-action px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+            >
+              <Plus size={15} />
+              Add
+            </button>
+          </div>
+          {nameError && (
+            <p className="mt-1.5 text-xs text-error">{nameError}</p>
+          )}
         </form>
       </div>
     </div>

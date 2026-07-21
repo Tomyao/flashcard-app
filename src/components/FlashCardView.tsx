@@ -95,7 +95,7 @@ export function FlashCardView({
                   }}
                   className="group flex w-full cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-action/5 dark:hover:bg-action/10"
                 >
-                  <span className="mt-0.5 shrink-0 text-sm font-medium text-action">
+                  <span className="shrink-0 text-sm font-medium text-action">
                     {item.number}.
                   </span>
                   <span className="flex-1 text-sm text-text-primary-light dark:text-text-primary-dark">

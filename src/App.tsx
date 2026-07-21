@@ -4,6 +4,7 @@ import { FilterBar } from "./components/FilterBar";
 import { CardBoard } from "./components/CardBoard";
 import { CardEditorModal } from "./components/CardEditorModal";
 import { StarColorOverlay } from "./components/StarColorOverlay";
+import { Toast } from "./components/Toast";
 import { useData } from "./context/DataContext";
 import { useDarkMode } from "./hooks/useDarkMode";
 import type { FlashCard } from "./types";
@@ -17,6 +18,7 @@ function App() {
   const [starColorsOpen, setStarColorsOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<FlashCard | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   if (data.loading) {
     return (
@@ -143,7 +145,10 @@ function App() {
         onUpdate={(id, updates) => void data.updateStarColor(id, updates)}
         onReorder={data.reorderStarColors}
         onDelete={handleDeleteStarColor}
+        onRenameError={setToastMessage}
       />
+
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }
