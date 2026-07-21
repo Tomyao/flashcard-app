@@ -1,32 +1,38 @@
-# React + TypeScript + Vite
+# Flashcards
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A local-first flashcard PWA for studying topics broken into questions and answers. Data is stored entirely in the browser (IndexedDB) — no backend, no account, works offline.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Cards & categories** — each card holds a topic and a numbered list of Q&A items; organize cards into categories (with a built-in "No Category" bucket)
+- **Star system** — define custom named star colors, then star individual questions and/or whole cards; filter the board by one or more colors, by scope (cards / questions / both), or show only unstarred items
+- **Stack view** — swipe or click through a category's cards, revealing answers on demand
+- **Offline / installable** — a service worker (via `vite-plugin-pwa`) precaches assets so the app works offline and can be installed as a PWA
+- **Dark mode**
 
-## React Compiler
+## Tech stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19 + TypeScript
+- Vite 8, Tailwind CSS 4
+- `idb` for IndexedDB persistence
+- `vite-plugin-pwa` for offline support
+- `framer-motion` for animations
 
-## Expanding the Oxlint configuration
+## Development
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Other scripts:
+
+```bash
+npm run build    # type-check (tsc -b) and build for production
+npm run preview  # preview the production build locally
+npm run lint      # run oxlint
+```
+
+## Deployment
+
+The app is a static build (output in `dist/`) and deploys to [Vercel](https://vercel.com) with the included `vercel.json` — no environment variables or backend required.
