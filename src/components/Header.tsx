@@ -1,4 +1,5 @@
-import { Layers, Moon, Plus, Star, Sun } from "lucide-react";
+import { Moon, Plus, Star, Sun } from "lucide-react";
+import { AppMenu } from "./AppMenu";
 
 interface HeaderProps {
   isDark: boolean;
@@ -6,6 +7,12 @@ interface HeaderProps {
   onOpenStarColors: () => void;
   onOpenNewCard: () => void;
   activeStarColor: string | null;
+  userEmail: string | null;
+  onOpenAuthModal: () => void;
+  onLogout: () => void;
+  onSave: () => void;
+  saveDisabled: boolean;
+  saveLabel: string;
 }
 
 export function Header({
@@ -14,16 +21,24 @@ export function Header({
   onOpenStarColors,
   onOpenNewCard,
   activeStarColor,
+  userEmail,
+  onOpenAuthModal,
+  onLogout,
+  onSave,
+  saveDisabled,
+  saveLabel,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-app-light/90 backdrop-blur dark:border-slate-800 dark:bg-app-dark/90">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2 text-text-primary-light dark:text-text-primary-dark">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-action text-white">
-            <Layers size={18} />
-          </span>
-          <span className="text-lg font-semibold">Flashcards</span>
-        </div>
+        <AppMenu
+          userEmail={userEmail}
+          onOpenAuthModal={onOpenAuthModal}
+          onLogout={onLogout}
+          onSave={onSave}
+          saveDisabled={saveDisabled}
+          saveLabel={saveLabel}
+        />
 
         <div className="ml-auto flex items-center gap-2">
           <button

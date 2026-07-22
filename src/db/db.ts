@@ -113,6 +113,34 @@ export async function deleteCard(id: string): Promise<void> {
   await db.delete("cards", id);
 }
 
+/** Atomically wipes and rewrites categories/cards/starColors in one
+ * transaction -- used when restoring a backup snapshot from the server. */
+export async function replaceAll(snapshot: {
+  categories: Category[];
+  cards: FlashCard[];
+  starColors: StarColor[];
+}): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(["categories", "cards", "starColors"], "readwrite");
+  const categoriesStore = tx.objectStore("categories");
+  const cardsStore = tx.objectStore("cards");
+  const starColorsStore = tx.objectStore("starColors");
+
+  await Promise.all([
+    categoriesStore.clear(),
+    cardsStore.clear(),
+    starColorsStore.clear(),
+  ]);
+
+  await Promise.all([
+    ...snapshot.categories.map((c) => categoriesStore.put(c)),
+    ...snapshot.cards.map((c) => cardsStore.put(c)),
+    ...snapshot.starColors.map((c) => starColorsStore.put(c)),
+  ]);
+
+  await tx.done;
+}
+
 // Star colors
 
 export async function getStarColors(): Promise<StarColor[]> {

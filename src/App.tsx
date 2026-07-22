@@ -4,14 +4,22 @@ import { FilterBar } from "./components/FilterBar";
 import { CardBoard } from "./components/CardBoard";
 import { CardEditorModal } from "./components/CardEditorModal";
 import { StarColorOverlay } from "./components/StarColorOverlay";
+import { AuthModal } from "./components/AuthModal";
+import { BackupConflictModal } from "./components/BackupConflictModal";
 import { Toast } from "./components/Toast";
 import { useData } from "./context/DataContext";
+import { useAuth } from "./context/AuthContext";
 import { useDarkMode } from "./hooks/useDarkMode";
+import { useBackupSync } from "./hooks/useBackupSync";
 import type { FlashCard, StarFilterState } from "./types";
 
 function App() {
   const data = useData();
+  const auth = useAuth();
   const [isDark, toggleDark] = useDarkMode();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const sync = useBackupSync({ data, auth, onToast: setToastMessage });
 
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [starFilter, setStarFilter] = useState<StarFilterState>({
@@ -22,7 +30,6 @@ function App() {
   const [starColorsOpen, setStarColorsOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<FlashCard | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   if (data.loading) {
     return (
@@ -118,6 +125,12 @@ function App() {
           data.starColors.find((c) => c.id === data.activeStarColorId)
             ?.color ?? null
         }
+        userEmail={auth.user?.email ?? null}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
+        onLogout={auth.logout}
+        onSave={sync.manualSave}
+        saveDisabled={!auth.user || sync.status === "syncing" || sync.status === "conflict"}
+        saveLabel={sync.status === "syncing" ? "Saving…" : "Save"}
       />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -189,6 +202,25 @@ function App() {
         onDelete={handleDeleteStarColor}
         onRenameError={setToastMessage}
       />
+
+      <AuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onLogin={auth.login}
+        onRegister={auth.register}
+        onSuccess={() => {
+          setAuthModalOpen(false);
+          setToastMessage("Logged in");
+        }}
+      />
+
+      {sync.conflict && (
+        <BackupConflictModal
+          remoteUpdatedAt={sync.conflict.remoteUpdatedAt}
+          onUseBackup={() => sync.resolveConflict("useBackup")}
+          onKeepLocal={() => sync.resolveConflict("keepLocal")}
+        />
+      )}
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>

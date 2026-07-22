@@ -7,13 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Category, FlashCard, QA, StarColor } from "../types";
+import type { BackupSnapshot, Category, FlashCard, QA, StarColor } from "../types";
 import { NO_CATEGORY_ID } from "../types";
 import * as db from "../db/db";
 
 const ACTIVE_STAR_COLOR_KEY = "flashcards:activeStarColorId";
 
-interface DataContextValue {
+export interface DataContextValue {
   loading: boolean;
   categories: Category[];
   cards: FlashCard[];
@@ -44,6 +44,9 @@ interface DataContextValue {
   /** Re-applies default-first + alphabetical order; call once an edit is committed (e.g. on blur). */
   reorderStarColors: () => void;
   removeStarColor: (id: string) => Promise<void>;
+
+  /** Wipes local IndexedDB/state and replaces it with a backup snapshot pulled from the server. */
+  replaceAll: (snapshot: BackupSnapshot) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -304,6 +307,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [starColors, activeStarColorId, setActiveStarColorId],
   );
 
+  // Backup restore
+
+  const replaceAll = useCallback(
+    async (snapshot: BackupSnapshot) => {
+      await db.replaceAll({
+        categories: snapshot.categories,
+        cards: snapshot.cards,
+        starColors: snapshot.starColors,
+      });
+      setCategories(sortDefaultFirst(snapshot.categories));
+      setCards(sortByTopic(snapshot.cards));
+      setStarColors(sortDefaultFirst(snapshot.starColors));
+      const fallback =
+        snapshot.starColors.find((c) => c.isDefault)?.id ?? snapshot.starColors[0]?.id ?? "";
+      setActiveStarColorId(
+        snapshot.starColors.some((c) => c.id === snapshot.activeStarColorId)
+          ? snapshot.activeStarColorId
+          : fallback,
+      );
+    },
+    [setActiveStarColorId],
+  );
+
   const value = useMemo<DataContextValue>(
     () => ({
       loading,
@@ -323,6 +349,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateStarColor,
       reorderStarColors,
       removeStarColor,
+      replaceAll,
     }),
     [
       loading,
@@ -342,6 +369,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateStarColor,
       reorderStarColors,
       removeStarColor,
+      replaceAll,
     ],
   );
 

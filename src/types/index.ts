@@ -36,6 +36,14 @@ export interface Category {
 
 export const NO_CATEGORY_ID = "no-category";
 
+/** The full set of user data that gets backed up to / restored from the server. */
+export interface BackupSnapshot {
+  categories: Category[];
+  cards: FlashCard[];
+  starColors: StarColor[];
+  activeStarColorId: string;
+}
+
 export type StarFilterScope = "questions" | "cards" | "both";
 
 export interface StarFilterState {
