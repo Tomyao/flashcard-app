@@ -6,9 +6,11 @@ import { requireAuth } from "./middleware/auth.js";
 import authRoutes from "./routes/auth.routes.js";
 import backupRoutes from "./routes/backup.routes.js";
 
+// Browser Origin headers never have a trailing slash, so strip any that
+// sneak into the env var or an exact-match comparison will always fail.
 const allowedOrigins = (process.env.CLIENT_ORIGIN ?? "")
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
 const app = express();
