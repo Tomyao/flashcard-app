@@ -1,4 +1,5 @@
 {
   "framework": "express",
-  "buildCommand": null
+  "buildCommand": null,
+  "outputDirectory": "."
 }
