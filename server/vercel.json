@@ -1,5 +1,4 @@
 {
-  "framework": null,
-  "buildCommand": null,
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  "framework": "express",
+  "buildCommand": null
 }
