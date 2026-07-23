@@ -1,5 +1,7 @@
 import { Moon, Plus, Star, Sun } from "lucide-react";
 import { AppMenu } from "./AppMenu";
+import { SaveStatusIndicator } from "./SaveStatusIndicator";
+import type { SaveIndicator } from "../hooks/useSaveStatusIndicator";
 
 interface HeaderProps {
   isDark: boolean;
@@ -13,6 +15,7 @@ interface HeaderProps {
   onSave: () => void;
   saveDisabled: boolean;
   saveLabel: string;
+  saveIndicator: SaveIndicator;
 }
 
 export function Header({
@@ -27,6 +30,7 @@ export function Header({
   onSave,
   saveDisabled,
   saveLabel,
+  saveIndicator,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-app-light/90 backdrop-blur dark:border-slate-800 dark:bg-app-dark/90">
@@ -39,6 +43,8 @@ export function Header({
           saveDisabled={saveDisabled}
           saveLabel={saveLabel}
         />
+
+        <SaveStatusIndicator indicator={saveIndicator} />
 
         <div className="ml-auto flex items-center gap-2">
           <button

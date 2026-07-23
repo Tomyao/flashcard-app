@@ -23,6 +23,11 @@ interface UseBackupSyncOptions {
 export interface BackupSyncResult {
   status: SyncStatus;
   conflict: BackupConflict | null;
+  /** Timestamp of the most recently *successful* backup write, or null if
+   * none has happened yet this session. Distinct from `status` so the UI
+   * can tell a completed save apart from a failed one even though both
+   * transition `status` back to "idle". */
+  lastSavedAt: number | null;
   manualSave: () => void;
   resolveConflict: (choice: "useBackup" | "keepLocal") => void;
 }
@@ -44,6 +49,7 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
   const { replaceAll } = data;
   const [status, setStatus] = useState<SyncStatus>("idle");
   const [conflict, setConflict] = useState<BackupConflict | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
 
   const statusRef = useRef<SyncStatus>(status);
   const latestDataRef = useRef<BackupSnapshot>(snapshotOf(data));
@@ -84,8 +90,10 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
         const localCanonical = canonicalize(localSnapshot);
 
         if (!backup) {
+          setStatus("syncing");
           await putBackup(token, localSnapshot);
           lastSyncedSnapshotRef.current = localCanonical;
+          setLastSavedAt(Date.now());
           setStatus("idle");
           return;
         }
@@ -119,6 +127,7 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
       putBackup(token, snapshot)
         .then(() => {
           lastSyncedSnapshotRef.current = canonical;
+          setLastSavedAt(Date.now());
           setStatus("idle");
         })
         .catch((err: unknown) => {
@@ -140,8 +149,8 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
     putBackup(token, snapshot)
       .then(() => {
         lastSyncedSnapshotRef.current = canonicalize(snapshot);
+        setLastSavedAt(Date.now());
         setStatus("idle");
-        onToast("Saved");
       })
       .catch((err: unknown) => {
         onToast(errorMessage(err, "Save failed."));
@@ -163,20 +172,22 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
         });
       } else {
         const snapshot = latestDataRef.current;
+        setStatus("syncing");
         void putBackup(token, snapshot)
           .then(() => {
             lastSyncedSnapshotRef.current = canonicalize(snapshot);
+            setLastSavedAt(Date.now());
             setConflict(null);
             setStatus("idle");
-            onToast("Backup updated");
           })
           .catch((err: unknown) => {
             onToast(errorMessage(err, "Couldn't update the backup."));
+            setStatus("conflict");
           });
       }
     },
     [conflict, auth.token, replaceAll, onToast],
   );
 
-  return { status, conflict, manualSave, resolveConflict };
+  return { status, conflict, lastSavedAt, manualSave, resolveConflict };
 }

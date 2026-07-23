@@ -51,7 +51,7 @@ export function AppMenu({
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-action text-white">
           <Layers size={18} />
         </span>
-        <span className="text-lg font-semibold">Flashcards</span>
+        <span className="hidden text-lg font-semibold sm:inline">Flashcards</span>
         <ChevronDown
           size={14}
           className={`text-text-secondary-light transition-transform dark:text-text-secondary-dark ${open ? "rotate-180" : ""}`}

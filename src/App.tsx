@@ -11,6 +11,7 @@ import { useData } from "./context/DataContext";
 import { useAuth } from "./context/AuthContext";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useBackupSync } from "./hooks/useBackupSync";
+import { useSaveStatusIndicator } from "./hooks/useSaveStatusIndicator";
 import type { FlashCard, StarFilterState } from "./types";
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const sync = useBackupSync({ data, auth, onToast: setToastMessage });
+  const saveIndicator = useSaveStatusIndicator(sync.status, sync.lastSavedAt, !!auth.user);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [starFilter, setStarFilter] = useState<StarFilterState>({
@@ -131,6 +133,7 @@ function App() {
         onSave={sync.manualSave}
         saveDisabled={!auth.user || sync.status === "syncing" || sync.status === "conflict"}
         saveLabel={sync.status === "syncing" ? "Saving…" : "Save"}
+        saveIndicator={saveIndicator}
       />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
