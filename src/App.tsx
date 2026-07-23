@@ -211,10 +211,7 @@ function App() {
         onClose={() => setAuthModalOpen(false)}
         onLogin={auth.login}
         onRegister={auth.register}
-        onSuccess={() => {
-          setAuthModalOpen(false);
-          setToastMessage("Logged in");
-        }}
+        onSuccess={() => setAuthModalOpen(false)}
       />
 
       {sync.conflict && (
