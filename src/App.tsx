@@ -217,7 +217,14 @@ function App() {
       {sync.conflict && (
         <BackupConflictModal
           remoteUpdatedAt={sync.conflict.remoteUpdatedAt}
-          onUseBackup={() => sync.resolveConflict("useBackup")}
+          onUseBackup={() => {
+            sync.resolveConflict("useBackup");
+            // The restored data may not contain the currently selected
+            // category/star colors, so drop back to the unfiltered view
+            // rather than risk pointing at ids that no longer exist.
+            setSelectedCategoryId("all");
+            setStarFilter({ colorIds: new Set(), scope: "both", unstarred: false });
+          }}
           onKeepLocal={() => sync.resolveConflict("keepLocal")}
         />
       )}
