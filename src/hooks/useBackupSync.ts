@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getBackup, putBackup } from "../api/backup";
+import { uploadPhoto, deletePhotoBlob } from "../api/photos";
 import { canonicalize } from "../lib/canonicalSnapshot";
+import {
+  collectUnsyncedHashes,
+  rehydratePhotosForRestore,
+  withResolvedPhotoUrls,
+} from "../lib/photoSync";
+import * as db from "../db/db";
 import type { AuthContextValue } from "../context/AuthContext";
 import type { DataContextValue } from "../context/DataContext";
 import type { BackupSnapshot } from "../types";
@@ -45,8 +52,64 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
+/** Uploads every photo referenced in `cards` that doesn't have a
+ * `remoteUrl` anywhere yet (deduped by hash -- see `collectUnsyncedHashes`),
+ * and broadcasts every resolved URL (newly uploaded or already known from
+ * another item sharing the hash) back into local state via
+ * `applyRemoteUrlsForHashes` so it's persisted even if the app closes right
+ * after. Returns the full hash->url map actually resolved this pass, for
+ * the caller to fold into the snapshot it's about to PUT without waiting
+ * on a React re-render. */
+async function syncPendingPhotos(
+  token: string,
+  userId: string,
+  cards: BackupSnapshot["cards"],
+  applyRemoteUrlsForHashes: (updates: Map<string, string>) => void,
+  onToast: (message: string) => void,
+): Promise<Map<string, string>> {
+  const hashes = collectUnsyncedHashes(cards);
+  const resolved = new Map<string, string>();
+  const toUpload: string[] = [];
+  for (const [hash, url] of hashes) {
+    if (url) resolved.set(hash, url);
+    else toUpload.push(hash);
+  }
+
+  let failures = 0;
+  for (const hash of toUpload) {
+    try {
+      const blob = await db.getPhoto(hash);
+      if (!blob) continue;
+      resolved.set(hash, await uploadPhoto(token, userId, hash, blob));
+    } catch {
+      failures += 1;
+    }
+  }
+
+  if (resolved.size > 0) applyRemoteUrlsForHashes(resolved);
+  if (failures > 0) {
+    onToast(
+      `Couldn't upload ${failures} photo${failures === 1 ? "" : "s"} -- will retry automatically.`,
+    );
+  }
+  return resolved;
+}
+
+/** Best-effort: a delete that fails (e.g. offline right now) just leaves an
+ * orphaned blob in storage rather than blocking the sync -- an accepted
+ * limitation, consistent with this app's existing whole-snapshot,
+ * no-versioning tolerance for simplicity over robustness. */
+async function processPendingBlobDeletions(
+  token: string,
+  drainPendingBlobDeletions: () => string[],
+): Promise<void> {
+  const urls = drainPendingBlobDeletions();
+  if (urls.length === 0) return;
+  await Promise.allSettled(urls.map((url) => deletePhotoBlob(token, url)));
+}
+
 export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): BackupSyncResult {
-  const { replaceAll } = data;
+  const { replaceAll, applyRemoteUrlsForHashes, drainPendingBlobDeletions } = data;
   const [status, setStatus] = useState<SyncStatus>("idle");
   const [conflict, setConflict] = useState<BackupConflict | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -81,6 +144,7 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
     checkedForUserIdRef.current = auth.user.id;
 
     const token = auth.token;
+    const userId = auth.user.id;
     setStatus("checking");
 
     (async () => {
@@ -90,9 +154,20 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
         const localCanonical = canonicalize(localSnapshot);
 
         if (!backup) {
+          // Nothing to conflict with -- always pushing, so uploading
+          // photos first (rather than during the compare below) isn't
+          // wasted work.
           setStatus("syncing");
-          await putBackup(token, localSnapshot);
-          lastSyncedSnapshotRef.current = localCanonical;
+          const resolvedUrls = await syncPendingPhotos(
+            token,
+            userId,
+            localSnapshot.cards,
+            applyRemoteUrlsForHashes,
+            onToast,
+          );
+          const toPush = withResolvedPhotoUrls(localSnapshot, resolvedUrls);
+          await putBackup(token, toPush);
+          lastSyncedSnapshotRef.current = canonicalize(toPush);
           setLastSavedAt(Date.now());
           setStatus("idle");
           return;
@@ -110,12 +185,13 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
         setStatus("error");
       }
     })();
-  }, [data.loading, auth.initializing, auth.user, auth.token, onToast]);
+  }, [data.loading, auth.initializing, auth.user, auth.token, onToast, applyRemoteUrlsForHashes]);
 
   // Auto-save every 60s while logged in, only when data has actually changed.
   useEffect(() => {
-    if (!auth.token) return;
+    if (!auth.token || !auth.user) return;
     const token = auth.token;
+    const userId = auth.user.id;
 
     const id = window.setInterval(() => {
       if (statusRef.current !== "idle") return;
@@ -124,69 +200,122 @@ export function useBackupSync({ data, auth, onToast }: UseBackupSyncOptions): Ba
       if (canonical === lastSyncedSnapshotRef.current) return;
 
       setStatus("syncing");
-      putBackup(token, snapshot)
-        .then(() => {
-          lastSyncedSnapshotRef.current = canonical;
+      void (async () => {
+        try {
+          const resolvedUrls = await syncPendingPhotos(
+            token,
+            userId,
+            snapshot.cards,
+            applyRemoteUrlsForHashes,
+            onToast,
+          );
+          await processPendingBlobDeletions(token, drainPendingBlobDeletions);
+          const toPush = withResolvedPhotoUrls(snapshot, resolvedUrls);
+          await putBackup(token, toPush);
+          lastSyncedSnapshotRef.current = canonicalize(toPush);
           setLastSavedAt(Date.now());
           setStatus("idle");
-        })
-        .catch((err: unknown) => {
+        } catch (err) {
           onToast(errorMessage(err, "Auto-save failed."));
           setStatus("idle");
-        });
+        }
+      })();
     }, AUTO_SAVE_INTERVAL_MS);
 
     return () => window.clearInterval(id);
-  }, [auth.token, onToast]);
+  }, [auth.token, auth.user, onToast, applyRemoteUrlsForHashes, drainPendingBlobDeletions]);
 
   const manualSave = useCallback(() => {
-    if (!auth.token) return;
+    if (!auth.token || !auth.user) return;
     if (statusRef.current === "syncing" || statusRef.current === "conflict") return;
 
     const token = auth.token;
+    const userId = auth.user.id;
     const snapshot = latestDataRef.current;
     setStatus("syncing");
-    putBackup(token, snapshot)
-      .then(() => {
-        lastSyncedSnapshotRef.current = canonicalize(snapshot);
+    void (async () => {
+      try {
+        const resolvedUrls = await syncPendingPhotos(
+          token,
+          userId,
+          snapshot.cards,
+          applyRemoteUrlsForHashes,
+          onToast,
+        );
+        await processPendingBlobDeletions(token, drainPendingBlobDeletions);
+        const toPush = withResolvedPhotoUrls(snapshot, resolvedUrls);
+        await putBackup(token, toPush);
+        lastSyncedSnapshotRef.current = canonicalize(toPush);
         setLastSavedAt(Date.now());
         setStatus("idle");
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         onToast(errorMessage(err, "Save failed."));
         setStatus("idle");
-      });
-  }, [auth.token, onToast]);
+      }
+    })();
+  }, [auth.token, auth.user, onToast, applyRemoteUrlsForHashes, drainPendingBlobDeletions]);
 
   const resolveConflict = useCallback(
     (choice: "useBackup" | "keepLocal") => {
-      if (!conflict || !auth.token) return;
+      if (!conflict || !auth.token || !auth.user) return;
       const token = auth.token;
+      const userId = auth.user.id;
 
       if (choice === "useBackup") {
-        void replaceAll(conflict.remoteData).then(() => {
-          lastSyncedSnapshotRef.current = canonicalize(conflict.remoteData);
-          setConflict(null);
-          setStatus("idle");
-          onToast("Restored from backup");
-        });
+        setStatus("syncing");
+        void rehydratePhotosForRestore(conflict.remoteData)
+          .then(async ({ snapshot, photosToSeed, droppedCount }) => {
+            await replaceAll(snapshot, photosToSeed);
+            lastSyncedSnapshotRef.current = canonicalize(snapshot);
+            setConflict(null);
+            setStatus("idle");
+            onToast("Restored from backup");
+            if (droppedCount > 0) {
+              onToast(
+                `${droppedCount} photo${droppedCount === 1 ? "" : "s"} couldn't be restored -- ` +
+                  "they weren't backed up from any device and aren't present locally either.",
+              );
+            }
+          })
+          .catch((err) => {
+            onToast(errorMessage(err, "Couldn't restore from backup."));
+            setStatus("conflict");
+          });
       } else {
         const snapshot = latestDataRef.current;
         setStatus("syncing");
-        void putBackup(token, snapshot)
-          .then(() => {
-            lastSyncedSnapshotRef.current = canonicalize(snapshot);
+        void (async () => {
+          try {
+            const resolvedUrls = await syncPendingPhotos(
+              token,
+              userId,
+              snapshot.cards,
+              applyRemoteUrlsForHashes,
+              onToast,
+            );
+            await processPendingBlobDeletions(token, drainPendingBlobDeletions);
+            const toPush = withResolvedPhotoUrls(snapshot, resolvedUrls);
+            await putBackup(token, toPush);
+            lastSyncedSnapshotRef.current = canonicalize(toPush);
             setLastSavedAt(Date.now());
             setConflict(null);
             setStatus("idle");
-          })
-          .catch((err: unknown) => {
+          } catch (err) {
             onToast(errorMessage(err, "Couldn't update the backup."));
             setStatus("conflict");
-          });
+          }
+        })();
       }
     },
-    [conflict, auth.token, replaceAll, onToast],
+    [
+      conflict,
+      auth.token,
+      auth.user,
+      replaceAll,
+      onToast,
+      applyRemoteUrlsForHashes,
+      drainPendingBlobDeletions,
+    ],
   );
 
   return { status, conflict, lastSavedAt, manualSave, resolveConflict };

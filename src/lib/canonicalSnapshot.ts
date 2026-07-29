@@ -1,7 +1,15 @@
-import type { BackupSnapshot } from "../types";
+import type { BackupSnapshot, Photo } from "../types";
 
 function byId<T extends { id: string }>(a: T, b: T): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** `hash` is deterministic across devices (unlike a per-device local id),
+ * so -- unlike photo bytes themselves -- it's safe to include here. This is
+ * what lets two devices holding the identical photo agree even while one
+ * hasn't finished uploading it yet. */
+function canonicalPhoto(photo: Photo | null): { hash: string; remoteUrl: string | null } | null {
+  return photo ? { hash: photo.hash, remoteUrl: photo.remoteUrl } : null;
 }
 
 /** Deterministic JSON string for a snapshot, used to compare local data
@@ -28,6 +36,8 @@ export function canonicalize(snapshot: BackupSnapshot): string {
         number: i.number,
         question: i.question,
         answer: i.answer,
+        questionPhoto: canonicalPhoto(i.questionPhoto),
+        answerPhoto: canonicalPhoto(i.answerPhoto),
         starColorId: i.starColorId,
       })),
     }));

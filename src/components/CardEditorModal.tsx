@@ -1,12 +1,103 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { Plus, Trash2, X } from "lucide-react";
-import type { Category, FlashCard } from "../types";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { Image as ImageIcon, Plus, Trash2, X } from "lucide-react";
+import type { Category, FlashCard, Photo } from "../types";
 import { NO_CATEGORY_ID } from "../types";
+import * as db from "../db/db";
+import { compressImage, hashBlob } from "../lib/imageCompression";
+import { useLocalPhotoUrl } from "../hooks/useLocalPhotoUrl";
 
 interface DraftItem {
   id: string;
   question: string;
   answer: string;
+  questionPhoto: Photo | null;
+  answerPhoto: Photo | null;
+}
+
+type PhotoSlot = "questionPhoto" | "answerPhoto";
+
+interface HasPhotos {
+  questionPhoto: Photo | null;
+  answerPhoto: Photo | null;
+}
+
+/** All photo hashes referenced anywhere across a set of items (both slots). */
+function hashesOf(items: HasPhotos[]): Set<string> {
+  const hashes = new Set<string>();
+  for (const item of items) {
+    if (item.questionPhoto) hashes.add(item.questionPhoto.hash);
+    if (item.answerPhoto) hashes.add(item.answerPhoto.hash);
+  }
+  return hashes;
+}
+
+interface PhotoFieldProps {
+  label: string;
+  photo: Photo | null;
+  onAttach: (file: File) => void;
+  onRemove: () => void;
+}
+
+/** Attach/replace/remove control for one side (question or answer) of one
+ * item. Doesn't delete anything itself on replace/remove -- a hash can be
+ * shared by other items (dedup), so only the session-end sweep (see
+ * `sweepAbandonedSessionPhotos` below) and, on actual save,
+ * `DataContext.saveCard`'s reference-counted cleanup are allowed to delete
+ * a blob. */
+function PhotoField({ label, photo, onAttach, onRemove }: PhotoFieldProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const url = useLocalPhotoUrl(photo?.hash);
+
+  return (
+    <div className="mt-1.5 flex items-center gap-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onAttach(file);
+          e.target.value = "";
+        }}
+      />
+      {photo ? (
+        <>
+          {url && (
+            <img
+              src={url}
+              alt=""
+              className="h-10 w-10 shrink-0 rounded-md border border-slate-200 object-cover dark:border-slate-700"
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="cursor-pointer rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-text-secondary-light hover:bg-slate-100 dark:border-slate-700 dark:text-text-secondary-dark dark:hover:bg-slate-800"
+          >
+            Replace photo
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove ${label} photo`}
+            className="cursor-pointer rounded-md p-1 text-text-secondary-light hover:bg-error/10 hover:text-error dark:text-text-secondary-dark"
+          >
+            <Trash2 size={13} />
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-dashed border-slate-300 px-2 py-1 text-xs font-medium text-text-secondary-light hover:bg-slate-100 dark:border-slate-600 dark:text-text-secondary-dark dark:hover:bg-slate-800"
+        >
+          <ImageIcon size={13} />
+          Add {label} photo
+        </button>
+      )}
+    </div>
+  );
 }
 
 interface AutoGrowTextareaProps {
@@ -45,22 +136,42 @@ interface CardEditorModalProps {
   onClose: () => void;
   card: FlashCard | null;
   categories: Category[];
+  /** All cards in the app -- used only to check whether a photo the user is
+   * abandoning mid-session is still referenced by some other (already
+   * saved) card before deleting its blob; see `sweepAbandonedSessionPhotos`. */
+  cards: FlashCard[];
   onCreateCategory: (name: string) => Promise<Category>;
   onSave: (input: {
     topic: string;
     categoryIds: string[];
-    items: Array<{ id?: string; question: string; answer: string }>;
+    items: Array<{
+      id?: string;
+      question: string;
+      answer: string;
+      questionPhoto: Photo | null;
+      answerPhoto: Photo | null;
+    }>;
   }) => void;
 }
 
 function toDraftItems(card: FlashCard | null): DraftItem[] {
   if (!card || card.items.length === 0) {
-    return [{ id: crypto.randomUUID(), question: "", answer: "" }];
+    return [
+      {
+        id: crypto.randomUUID(),
+        question: "",
+        answer: "",
+        questionPhoto: null,
+        answerPhoto: null,
+      },
+    ];
   }
   return card.items.map((item) => ({
     id: item.id,
     question: item.question,
     answer: item.answer,
+    questionPhoto: item.questionPhoto,
+    answerPhoto: item.answerPhoto,
   }));
 }
 
@@ -69,6 +180,7 @@ export function CardEditorModal({
   onClose,
   card,
   categories,
+  cards,
   onCreateCategory,
   onSave,
 }: CardEditorModalProps) {
@@ -82,11 +194,56 @@ export function CardEditorModal({
     null,
   );
 
+  // Photos that belonged to `card` before this editing session started --
+  // never eligible for the abandoned-photo sweep below, since only
+  // DataContext.saveCard's own (cross-card) diff is allowed to clean those
+  // up, once a save actually commits.
+  const originalHashesRef = useRef<Set<string>>(new Set());
+  // Every hash newly created (attached) during this editing session. A
+  // fresh instance each time the modal opens -- not on every keystroke --
+  // since this same component instance can be toggled open/closed
+  // repeatedly for the same card (see App.tsx's `key={editingCard?.id}`).
+  const sessionCreatedHashesRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    originalHashesRef.current = hashesOf(toDraftItems(card));
+    sessionCreatedHashesRef.current = new Set();
+  }, [open, card]);
+
   if (!open) return null;
 
   const customCategories = categories.filter((c) => !c.isDefault);
 
+  function isHashReferencedElsewhere(hash: string): boolean {
+    return cards.some(
+      (c) =>
+        c.items.some(
+          (i) => i.questionPhoto?.hash === hash || i.answerPhoto?.hash === hash,
+        ),
+    );
+  }
+
+  /** Deletes any hash created during this session that didn't make it into
+   * `finalItems` (whatever's actually being kept -- the saved items, or the
+   * reverted-to-original items on cancel) and isn't still needed by some
+   * other already-saved card. This is the only place that cleans up a
+   * photo that was attached and then replaced/removed before ever being
+   * saved -- `saveCard`'s diff only knows about the card's state from
+   * before the modal opened, so a photo that only ever existed mid-session
+   * is invisible to it. */
+  function sweepAbandonedSessionPhotos(finalItems: HasPhotos[]) {
+    const keptHashes = hashesOf(finalItems);
+    for (const hash of sessionCreatedHashesRef.current) {
+      if (!keptHashes.has(hash) && !isHashReferencedElsewhere(hash)) {
+        void db.deletePhoto(hash);
+      }
+    }
+    sessionCreatedHashesRef.current = new Set();
+  }
+
   function resetAndClose() {
+    sweepAbandonedSessionPhotos(toDraftItems(card));
     setTopic(card?.topic ?? "");
     setCategoryIds(card?.categoryIds ?? []);
     setItems(toDraftItems(card));
@@ -123,10 +280,38 @@ export function CardEditorModal({
     );
   }
 
+  function attachPhoto(id: string, slot: PhotoSlot, file: File) {
+    void (async () => {
+      const compressed = await compressImage(file);
+      const hash = await hashBlob(compressed);
+      await db.putPhoto(hash, compressed);
+      if (!originalHashesRef.current.has(hash)) {
+        sessionCreatedHashesRef.current.add(hash);
+      }
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, [slot]: { hash, remoteUrl: null } } : item,
+        ),
+      );
+    })();
+  }
+
+  function removePhoto(id: string, slot: PhotoSlot) {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [slot]: null } : item)),
+    );
+  }
+
   function addItem() {
     setItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), question: "", answer: "" },
+      {
+        id: crypto.randomUUID(),
+        question: "",
+        answer: "",
+        questionPhoto: null,
+        answerPhoto: null,
+      },
     ]);
   }
 
@@ -147,9 +332,12 @@ export function CardEditorModal({
         id: isOriginalId(item.id) ? item.id : undefined,
         question: item.question.trim(),
         answer: item.answer.trim(),
+        questionPhoto: item.questionPhoto,
+        answerPhoto: item.answerPhoto,
       }))
       .filter((item) => item.question && item.answer);
     if (cleanItems.length === 0) return;
+    sweepAbandonedSessionPhotos(cleanItems);
     onSave({ topic: cleanTopic, categoryIds, items: cleanItems });
     onClose();
   }
@@ -270,16 +458,32 @@ export function CardEditorModal({
                     {index + 1}.
                   </span>
                   <div className="min-w-0 flex-1 space-y-2">
-                    <AutoGrowTextarea
-                      value={item.question}
-                      onChange={(value) => updateItem(item.id, "question", value)}
-                      placeholder="Question"
-                    />
-                    <AutoGrowTextarea
-                      value={item.answer}
-                      onChange={(value) => updateItem(item.id, "answer", value)}
-                      placeholder="Answer"
-                    />
+                    <div>
+                      <AutoGrowTextarea
+                        value={item.question}
+                        onChange={(value) => updateItem(item.id, "question", value)}
+                        placeholder="Question"
+                      />
+                      <PhotoField
+                        label="question"
+                        photo={item.questionPhoto}
+                        onAttach={(file) => attachPhoto(item.id, "questionPhoto", file)}
+                        onRemove={() => removePhoto(item.id, "questionPhoto")}
+                      />
+                    </div>
+                    <div>
+                      <AutoGrowTextarea
+                        value={item.answer}
+                        onChange={(value) => updateItem(item.id, "answer", value)}
+                        placeholder="Answer"
+                      />
+                      <PhotoField
+                        label="answer"
+                        photo={item.answerPhoto}
+                        onAttach={(file) => attachPhoto(item.id, "answerPhoto", file)}
+                        onRemove={() => removePhoto(item.id, "answerPhoto")}
+                      />
+                    </div>
                   </div>
                   <button
                     type="button"

@@ -184,6 +184,7 @@ function App() {
         onClose={() => setEditorOpen(false)}
         card={editingCard}
         categories={data.categories}
+        cards={data.cards}
         onCreateCategory={data.createCategory}
         onSave={(input) =>
           void data.saveCard({ id: editingCard?.id, ...input })

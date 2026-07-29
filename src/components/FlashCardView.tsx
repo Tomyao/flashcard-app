@@ -1,7 +1,31 @@
 import { useState } from "react";
 import { RotateCcw, Tag } from "lucide-react";
-import type { Category, FlashCard, StarColor } from "../types";
+import type { Category, FlashCard, Photo, StarColor } from "../types";
 import { StarButton } from "./StarButton";
+import { useLocalPhotoUrl } from "../hooks/useLocalPhotoUrl";
+
+interface PhotoThumbProps {
+  photo: Photo | null;
+  size?: "sm" | "lg";
+}
+
+/** Prefers the local IndexedDB blob (works fully offline); falls back to
+ * the Vercel Blob URL directly if this device never had/kept the local
+ * copy (e.g. a photo synced from another device that hasn't been fetched
+ * here yet). */
+function PhotoThumb({ photo, size = "sm" }: PhotoThumbProps) {
+  const localUrl = useLocalPhotoUrl(photo?.hash);
+  const src = localUrl ?? photo?.remoteUrl ?? null;
+  if (!src) return null;
+  const dims = size === "lg" ? "h-24 w-24" : "h-8 w-8";
+  return (
+    <img
+      src={src}
+      alt=""
+      className={`${dims} shrink-0 rounded-md border border-slate-200 object-cover dark:border-slate-700`}
+    />
+  );
+}
 
 interface FlashCardViewProps {
   card: FlashCard;
@@ -97,6 +121,7 @@ export function FlashCardView({
                   <span className="shrink-0 text-sm font-medium text-action">
                     {item.number}.
                   </span>
+                  <PhotoThumb photo={item.questionPhoto} size="sm" />
                   <span className="flex-1 text-sm text-text-primary-light dark:text-text-primary-dark">
                     {item.question}
                   </span>
@@ -143,6 +168,7 @@ export function FlashCardView({
                   <span className="text-sm font-medium text-action">
                     {focusedItem.number}.
                   </span>
+                  <PhotoThumb photo={focusedItem.questionPhoto} size="sm" />
                   <p className="flex-1 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
                     {focusedItem.question}
                   </p>
@@ -153,7 +179,8 @@ export function FlashCardView({
                     title="Star this question"
                   />
                 </div>
-                <div className="mt-4 flex flex-1 items-center justify-center rounded-xl bg-slate-50 p-4 text-center dark:bg-slate-800/60">
+                <div className="mt-4 flex flex-1 flex-col items-center justify-center gap-3 rounded-xl bg-slate-50 p-4 text-center dark:bg-slate-800/60">
+                  <PhotoThumb photo={focusedItem.answerPhoto} size="lg" />
                   <p className="text-base font-medium text-text-primary-light dark:text-text-primary-dark">
                     {focusedItem.answer}
                   </p>
@@ -167,6 +194,7 @@ export function FlashCardView({
                       <span className="text-sm font-medium text-action">
                         {item.number}.
                       </span>
+                      <PhotoThumb photo={item.questionPhoto} size="sm" />
                       <p className="flex-1 text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
                         {item.question}
                       </p>
@@ -177,7 +205,8 @@ export function FlashCardView({
                         title="Star this question"
                       />
                     </div>
-                    <div className="mt-2 rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/60">
+                    <div className="mt-2 flex flex-col items-center gap-2 rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/60">
+                      <PhotoThumb photo={item.answerPhoto} size="lg" />
                       <p className="text-base font-medium text-text-primary-light dark:text-text-primary-dark">
                         {item.answer}
                       </p>

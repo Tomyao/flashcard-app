@@ -6,12 +6,24 @@ export interface StarColor {
   isDefault: boolean;
 }
 
+export interface Photo {
+  /** SHA-256 hex of the compressed image bytes. Stable across devices --
+   * doubles as the key into the `photos` IndexedDB store, and is what lets
+   * a restore recognize a photo it already has locally without needing
+   * `remoteUrl` to be set. */
+  hash: string;
+  /** Vercel Blob URL once uploaded, else null. Never holds bytes. */
+  remoteUrl: string | null;
+}
+
 export interface QA {
   id: string;
   /** Display order / number, 1-based */
   number: number;
   question: string;
   answer: string;
+  questionPhoto: Photo | null;
+  answerPhoto: Photo | null;
   /** id of the StarColor this question is starred with, or null if unstarred */
   starColorId: string | null;
 }

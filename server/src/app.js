@@ -5,6 +5,7 @@ import { connectDB } from "./config/db.js";
 import { requireAuth } from "./middleware/auth.js";
 import authRoutes from "./routes/auth.routes.js";
 import backupRoutes from "./routes/backup.routes.js";
+import photoRoutes from "./routes/photos.routes.js";
 
 // Browser Origin headers never have a trailing slash, so strip any that
 // sneak into the env var or an exact-match comparison will always fail.
@@ -48,6 +49,7 @@ app.use(async (_req, _res, next) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/backup", requireAuth, backupRoutes);
+app.use("/api/photos", requireAuth, photoRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 

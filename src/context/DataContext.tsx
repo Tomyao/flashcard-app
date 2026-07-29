@@ -4,12 +4,32 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import type { BackupSnapshot, Category, FlashCard, QA, StarColor } from "../types";
+import type { BackupSnapshot, Category, FlashCard, Photo, QA, StarColor } from "../types";
 import { NO_CATEGORY_ID } from "../types";
 import * as db from "../db/db";
+
+/** Every non-null photo reference on a card, both slots, all items. */
+function photosOf(items: QA[]): Photo[] {
+  const photos: Photo[] = [];
+  for (const item of items) {
+    if (item.questionPhoto) photos.push(item.questionPhoto);
+    if (item.answerPhoto) photos.push(item.answerPhoto);
+  }
+  return photos;
+}
+
+/** Photos are content-hash keyed and can be shared by more than one QA item
+ * (dedup), so a photo removed from one card must not be deleted while
+ * another card (or another slot on the same card) still points to the same
+ * hash. Checks `hash` against every card in `allCards` before authorizing a
+ * delete. */
+function isHashStillReferenced(hash: string, allCards: FlashCard[]): boolean {
+  return allCards.some((card) => photosOf(card.items).some((p) => p.hash === hash));
+}
 
 const ACTIVE_STAR_COLOR_KEY = "flashcards:activeStarColorId";
 
@@ -29,7 +49,13 @@ export interface DataContextValue {
     id?: string;
     topic: string;
     categoryIds: string[];
-    items: Array<{ id?: string; question: string; answer: string }>;
+    items: Array<{
+      id?: string;
+      question: string;
+      answer: string;
+      questionPhoto?: Photo | null;
+      answerPhoto?: Photo | null;
+    }>;
   }) => Promise<FlashCard>;
   removeCard: (id: string) => Promise<void>;
 
@@ -45,8 +71,21 @@ export interface DataContextValue {
   reorderStarColors: () => void;
   removeStarColor: (id: string) => Promise<void>;
 
-  /** Wipes local IndexedDB/state and replaces it with a backup snapshot pulled from the server. */
-  replaceAll: (snapshot: BackupSnapshot) => Promise<void>;
+  /** Wipes local IndexedDB/state and replaces it with a backup snapshot
+   * pulled from the server, seeding any photo blobs the restore had to
+   * fetch (see `rehydratePhotosForRestore` in `lib/photoSync.ts`). */
+  replaceAll: (
+    snapshot: BackupSnapshot,
+    photosToSeed?: Array<{ hash: string; blob: Blob }>,
+  ) => Promise<void>;
+
+  /** Patches in a freshly learned Vercel Blob URL for every photo reference
+   * (across all cards) sharing the given content hash and not yet synced. */
+  applyRemoteUrlsForHashes: (updates: Map<string, string>) => void;
+  /** Pops and returns every Blob URL queued for deletion since the last
+   * drain (photos replaced/removed while editing or deleting a card), so a
+   * caller (the sync hook) can process each exactly once. */
+  drainPendingBlobDeletions: () => string[];
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -82,6 +121,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [cards, setCards] = useState<FlashCard[]>([]);
   const [starColors, setStarColors] = useState<StarColor[]>([]);
   const [activeStarColorId, setActiveStarColorIdState] = useState<string>("");
+  /** Blob URLs queued for remote deletion by saveCard/removeCard's photo
+   * cleanup, drained by the sync hook -- a plain ref since queuing one
+   * shouldn't itself trigger a re-render. */
+  const pendingBlobDeletionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     (async () => {
@@ -149,7 +192,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       id?: string;
       topic: string;
       categoryIds: string[];
-      items: Array<{ id?: string; question: string; answer: string }>;
+      items: Array<{
+        id?: string;
+        question: string;
+        answer: string;
+        questionPhoto?: Photo | null;
+        answerPhoto?: Photo | null;
+      }>;
     }) => {
       const now = Date.now();
       let result!: FlashCard;
@@ -165,6 +214,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             number: index + 1,
             question: draft.question,
             answer: draft.answer,
+            questionPhoto: draft.questionPhoto ?? null,
+            answerPhoto: draft.answerPhoto ?? null,
             starColorId: original?.starColorId ?? null,
           };
         });
@@ -192,6 +243,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const next = existing
           ? prev.map((c) => (c.id === updated.id ? updated : c))
           : [...prev, updated];
+
+        // Any photo that was on the card before this edit but isn't
+        // anywhere on it now -- and isn't referenced by any other card
+        // either (dedup) -- is genuinely orphaned: delete the local blob,
+        // and if it had made it to the cloud, queue the remote copy for
+        // deletion too.
+        if (existing) {
+          const keptHashes = new Set(photosOf(items).map((p) => p.hash));
+          const removed = new Map<string, Photo>();
+          for (const photo of photosOf(existing.items)) {
+            if (!keptHashes.has(photo.hash) && !removed.has(photo.hash)) {
+              removed.set(photo.hash, photo);
+            }
+          }
+          for (const [hash, photo] of removed) {
+            if (!isHashStillReferenced(hash, next)) {
+              void db.deletePhoto(hash);
+              if (photo.remoteUrl) pendingBlobDeletionsRef.current.add(photo.remoteUrl);
+            }
+          }
+        }
+
         return sortByTopic(next);
       });
       return result;
@@ -214,7 +287,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const removeCard = useCallback(async (id: string) => {
     await db.deleteCard(id);
-    setCards((prev) => prev.filter((c) => c.id !== id));
+    setCards((prev) => {
+      const target = prev.find((c) => c.id === id);
+      const next = prev.filter((c) => c.id !== id);
+      if (target) {
+        const removed = new Map<string, Photo>();
+        for (const photo of photosOf(target.items)) {
+          if (!removed.has(photo.hash)) removed.set(photo.hash, photo);
+        }
+        for (const [hash, photo] of removed) {
+          if (!isHashStillReferenced(hash, next)) {
+            void db.deletePhoto(hash);
+            if (photo.remoteUrl) pendingBlobDeletionsRef.current.add(photo.remoteUrl);
+          }
+        }
+      }
+      return next;
+    });
   }, []);
 
   // Starring
@@ -310,12 +399,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Backup restore
 
   const replaceAll = useCallback(
-    async (snapshot: BackupSnapshot) => {
-      await db.replaceAll({
-        categories: snapshot.categories,
-        cards: snapshot.cards,
-        starColors: snapshot.starColors,
-      });
+    async (snapshot: BackupSnapshot, photosToSeed: Array<{ hash: string; blob: Blob }> = []) => {
+      await db.replaceAll(
+        {
+          categories: snapshot.categories,
+          cards: snapshot.cards,
+          starColors: snapshot.starColors,
+        },
+        photosToSeed,
+      );
       setCategories(sortDefaultFirst(snapshot.categories));
       setCards(sortByTopic(snapshot.cards));
       setStarColors(sortDefaultFirst(snapshot.starColors));
@@ -329,6 +421,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     [setActiveStarColorId],
   );
+
+  // Photo sync
+
+  const applyRemoteUrlsForHashes = useCallback((updates: Map<string, string>) => {
+    if (updates.size === 0) return;
+    setCards((prev) => {
+      let anyChanged = false;
+      const next = prev.map((card) => {
+        let cardChanged = false;
+        const items = card.items.map((item) => {
+          const q = item.questionPhoto;
+          const a = item.answerPhoto;
+          const nextQ =
+            q && !q.remoteUrl && updates.has(q.hash)
+              ? { ...q, remoteUrl: updates.get(q.hash)! }
+              : q;
+          const nextA =
+            a && !a.remoteUrl && updates.has(a.hash)
+              ? { ...a, remoteUrl: updates.get(a.hash)! }
+              : a;
+          if (nextQ === q && nextA === a) return item;
+          cardChanged = true;
+          return { ...item, questionPhoto: nextQ, answerPhoto: nextA };
+        });
+        if (!cardChanged) return card;
+        anyChanged = true;
+        const updated = { ...card, items };
+        void db.putCard(updated);
+        return updated;
+      });
+      return anyChanged ? next : prev;
+    });
+  }, []);
+
+  const drainPendingBlobDeletions = useCallback((): string[] => {
+    const urls = Array.from(pendingBlobDeletionsRef.current);
+    pendingBlobDeletionsRef.current.clear();
+    return urls;
+  }, []);
 
   const value = useMemo<DataContextValue>(
     () => ({
@@ -350,6 +481,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       reorderStarColors,
       removeStarColor,
       replaceAll,
+      applyRemoteUrlsForHashes,
+      drainPendingBlobDeletions,
     }),
     [
       loading,
@@ -370,6 +503,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       reorderStarColors,
       removeStarColor,
       replaceAll,
+      applyRemoteUrlsForHashes,
+      drainPendingBlobDeletions,
     ],
   );
 
