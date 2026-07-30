@@ -24,7 +24,12 @@
 html,
 body,
 #root {
+  /* dvh tracks the browser's actual visible area as its toolbar shows/hides;
+     plain 100% here would resolve against the same "largest viewport" as
+     100vh, stretching taller than what's visible and forcing a scrollbar
+     even when the content itself fits. */
   height: 100%;
+  height: 100dvh;
 }
 
 html,

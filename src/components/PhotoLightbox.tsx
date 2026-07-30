@@ -29,7 +29,8 @@ type Gesture =
  * ancestor, not the viewport -- a portal is the only way around that here).
  * The default fit-to-screen size is already large enough on desktop, so
  * zoom is only wired up for touch: two-finger pinch to zoom in, one-finger
- * drag to pan once zoomed. Click/tap anywhere (image included) closes it.
+ * drag to pan once zoomed. Click/tap anywhere outside the photo closes it;
+ * the photo itself stops the click so panning/pinching it doesn't dismiss.
  *
  * Touch handling is done via a manually-attached, non-passive listener
  * (like `CardStack`'s wheel/touch handling) rather than JSX's
@@ -155,8 +156,12 @@ export function PhotoLightbox({ src, onClose }: PhotoLightboxProps) {
       // DOM tree -- this overlay is a React descendant of whatever card
       // row opened it, so an unstopped click here would still reach that
       // row's flip handler even though it's rendered into document.body.
-      // Only the explicit close button (below) is allowed to close this.
-      onClick={(e) => e.stopPropagation()}
+      // Clicking the backdrop closes the lightbox; the image itself stops
+      // propagation below so tapping the photo doesn't dismiss it.
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <motion.div
         className="relative"
@@ -164,6 +169,7 @@ export function PhotoLightbox({ src, onClose }: PhotoLightboxProps) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.85 }}
         transition={{ type: "spring", stiffness: 320, damping: 30 }}
+        onClick={(e) => e.stopPropagation()}
       >
         <img
           ref={imgRef}

@@ -24,11 +24,11 @@ interface PhotoThumbProps {
  * the Vercel Blob URL directly if this device never had/kept the local
  * copy (e.g. a photo synced from another device that hasn't been fetched
  * here yet). Styled like a physical photo print -- a white border
- * (heavier at the bottom, like a Polaroid) and a slight tilt -- rather
- * than a plain inline thumbnail. The white frame is deliberately
- * theme-invariant (no dark: override): a real printed photo wouldn't
- * change color with the app's theme. One consistent size everywhere --
- * question and answer photos, front face and back face alike. */
+ * (heavier at the bottom, like a Polaroid) -- rather than a plain inline
+ * thumbnail. The white frame is deliberately theme-invariant (no dark:
+ * override): a real printed photo wouldn't change color with the app's
+ * theme. One consistent size everywhere -- question and answer photos,
+ * front face and back face alike. */
 function PhotoThumb({ photo }: PhotoThumbProps) {
   const localUrl = useLocalPhotoUrl(photo?.hash);
   const src = localUrl ?? photo?.remoteUrl ?? null;
@@ -46,7 +46,7 @@ function PhotoThumb({ photo }: PhotoThumbProps) {
           setOpen(true);
         }}
         aria-label="View full photo"
-        className="mb-6 h-48 w-40 shrink-0 -rotate-2 cursor-zoom-in"
+        className="mb-6 h-48 w-40 shrink-0 cursor-zoom-in"
       >
         <div className="h-full w-full rounded-sm bg-white p-2 pb-4 shadow-lg">
           <img src={src} alt="" className="h-full w-full rounded-[1px] object-cover" />

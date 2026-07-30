@@ -35,7 +35,7 @@ function App() {
 
   if (data.loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-app-light dark:bg-app-dark">
+      <div className="flex min-h-dvh items-center justify-center bg-app-light dark:bg-app-dark">
         <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
           Loading your flashcards…
         </p>
@@ -117,7 +117,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-app-light dark:bg-app-dark">
+    <div className="min-h-dvh bg-app-light dark:bg-app-dark">
       <Header
         isDark={isDark}
         onToggleDark={toggleDark}
