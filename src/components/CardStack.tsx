@@ -398,7 +398,7 @@ export function CardStack({
         role="group"
         aria-label={`Flashcard stack, card ${currentIndex + 1} of ${cards.length}`}
         onKeyDown={onKeyDown}
-        className={`relative w-full max-w-md focus:outline-none ${stackHeight === null ? "h-120" : ""}`}
+        className={`relative w-full max-w-md overscroll-none focus:outline-none ${stackHeight === null ? "h-120" : ""}`}
         style={stackHeight !== null ? { height: stackHeight } : undefined}
       >
         {/* Painted farthest-first (index 1, then 0) so each nearer card

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type TouchList as ReactTouchList } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -11,27 +11,41 @@ interface PhotoLightboxProps {
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 
-function distanceBetweenTouches(touches: ReactTouchList): number {
+function distanceBetweenTouches(touches: TouchList): number {
   return Math.hypot(
     touches[0].clientX - touches[1].clientX,
     touches[0].clientY - touches[1].clientY,
   );
 }
 
+type Gesture =
+  | { type: "pan"; startX: number; startY: number; startOffsetX: number; startOffsetY: number }
+  | { type: "pinch"; initialDistance: number; initialScale: number }
+  | null;
+
 /** Full-screen photo viewer, rendered via a portal to `document.body` so it
  * escapes the card stack's/flip's own CSS transforms (a `position: fixed`
  * descendant of a transformed ancestor is positioned relative to that
  * ancestor, not the viewport -- a portal is the only way around that here).
  * The default fit-to-screen size is already large enough on desktop, so
- * zoom is only wired up for touch: two-finger pinch to zoom in, drag to pan
- * once zoomed. Click/tap anywhere (image included) closes it. */
+ * zoom is only wired up for touch: two-finger pinch to zoom in, one-finger
+ * drag to pan once zoomed. Click/tap anywhere (image included) closes it.
+ *
+ * Touch handling is done via a manually-attached, non-passive listener
+ * (like `CardStack`'s wheel/touch handling) rather than JSX's
+ * `onTouchMove` -- React binds touch listeners passively under the hood,
+ * which silently no-ops `preventDefault()`, letting the browser's own
+ * pinch-zoom/scroll run at the same time as ours and fight it. The
+ * transform itself is written straight to the DOM via a ref on every
+ * move rather than through React state, so a fast gesture isn't gated
+ * behind a render each frame -- combined, this is what actually makes the
+ * gesture feel 1:1 instead of laggy. Only Touch Events are used (no
+ * Pointer Events) since a single element mixing both for pan vs. pinch
+ * caused the two to fire and interfere during a two-finger gesture. */
 export function PhotoLightbox({ src, onClose }: PhotoLightboxProps) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(
-    null,
-  );
-  const pinchRef = useRef<{ initialDistance: number; initialScale: number } | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const transformRef = useRef({ scale: 1, x: 0, y: 0 });
+  const gestureRef = useRef<Gesture>(null);
 
   // Lock page scroll while the lightbox is open.
   useEffect(() => {
@@ -50,49 +64,85 @@ export function PhotoLightbox({ src, onClose }: PhotoLightboxProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  function onPointerDown(e: React.PointerEvent<HTMLImageElement>) {
-    if (scale <= 1) return;
-    dragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startOffsetX: offset.x,
-      startOffsetY: offset.y,
-    };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
 
-  function onPointerMove(e: React.PointerEvent<HTMLImageElement>) {
-    const drag = dragRef.current;
-    if (!drag) return;
-    setOffset({
-      x: drag.startOffsetX + (e.clientX - drag.startX),
-      y: drag.startOffsetY + (e.clientY - drag.startY),
-    });
-  }
-
-  function onPointerUp() {
-    dragRef.current = null;
-  }
-
-  function onTouchStart(e: React.TouchEvent<HTMLImageElement>) {
-    if (e.touches.length === 2) {
-      pinchRef.current = { initialDistance: distanceBetweenTouches(e.touches), initialScale: scale };
+    function applyTransform() {
+      const { scale, x, y } = transformRef.current;
+      if (img) img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
     }
-  }
 
-  function onTouchMove(e: React.TouchEvent<HTMLImageElement>) {
-    if (e.touches.length === 2 && pinchRef.current) {
+    function startPan(touch: Touch) {
+      gestureRef.current = {
+        type: "pan",
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startOffsetX: transformRef.current.x,
+        startOffsetY: transformRef.current.y,
+      };
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      if (e.touches.length === 2) {
+        gestureRef.current = {
+          type: "pinch",
+          initialDistance: distanceBetweenTouches(e.touches),
+          initialScale: transformRef.current.scale,
+        };
+      } else if (e.touches.length === 1 && transformRef.current.scale > 1) {
+        startPan(e.touches[0]);
+      }
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      const gesture = gestureRef.current;
+      if (!gesture) return;
       e.preventDefault();
-      const distance = distanceBetweenTouches(e.touches);
-      const nextScale =
-        pinchRef.current.initialScale * (distance / pinchRef.current.initialDistance);
-      setScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale)));
-    }
-  }
 
-  function onTouchEnd(e: React.TouchEvent<HTMLImageElement>) {
-    if (e.touches.length < 2) pinchRef.current = null;
-  }
+      if (gesture.type === "pinch" && e.touches.length === 2) {
+        const distance = distanceBetweenTouches(e.touches);
+        transformRef.current.scale = Math.min(
+          MAX_SCALE,
+          Math.max(MIN_SCALE, gesture.initialScale * (distance / gesture.initialDistance)),
+        );
+      } else if (gesture.type === "pan" && e.touches.length === 1) {
+        const touch = e.touches[0];
+        transformRef.current.x = gesture.startOffsetX + (touch.clientX - gesture.startX);
+        transformRef.current.y = gesture.startOffsetY + (touch.clientY - gesture.startY);
+      }
+      applyTransform();
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      if (e.touches.length === 0) {
+        gestureRef.current = null;
+        // Snap back if pinched below the minimum -- no reason to leave the
+        // image panned/off-center once it's back to unzoomed.
+        if (transformRef.current.scale <= 1) {
+          transformRef.current = { scale: 1, x: 0, y: 0 };
+          applyTransform();
+        }
+      } else if (e.touches.length === 1 && transformRef.current.scale > 1) {
+        // Lifting one finger out of a pinch -- resume as a pan from here
+        // instead of just stopping.
+        startPan(e.touches[0]);
+      } else {
+        gestureRef.current = null;
+      }
+    }
+
+    img.addEventListener("touchstart", onTouchStart, { passive: true });
+    img.addEventListener("touchmove", onTouchMove, { passive: false });
+    img.addEventListener("touchend", onTouchEnd, { passive: true });
+    img.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      img.removeEventListener("touchstart", onTouchStart);
+      img.removeEventListener("touchmove", onTouchMove);
+      img.removeEventListener("touchend", onTouchEnd);
+      img.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, []);
 
   return createPortal(
     <motion.div
@@ -116,20 +166,11 @@ export function PhotoLightbox({ src, onClose }: PhotoLightboxProps) {
         transition={{ type: "spring", stiffness: 320, damping: 30 }}
       >
         <img
+          ref={imgRef}
           src={src}
           alt=""
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-            cursor: scale > 1 ? "grab" : "default",
-          }}
-          className="max-h-[85vh] max-w-[90vw] touch-none rounded-lg object-contain shadow-2xl transition-transform select-none"
+          style={{ transform: "translate(0px, 0px) scale(1)" }}
+          className="max-h-[85vh] max-w-[90vw] touch-none rounded-lg object-contain shadow-2xl select-none will-change-transform"
         />
       </motion.div>
       <button
