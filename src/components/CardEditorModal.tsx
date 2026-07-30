@@ -206,8 +206,19 @@ export function CardEditorModal({
   // repeatedly for the same card (see App.tsx's `key={editingCard?.id}`).
   const sessionCreatedHashesRef = useRef<Set<string>>(new Set());
 
+  // Re-initializes the draft from `card` every time the modal opens --
+  // not just on mount. Creating a new card keeps `card` as `null` across
+  // saves (see App.tsx's `openNewCard`), so this same instance gets
+  // reopened for the next new card rather than remounted; without this,
+  // the draft would still hold whatever was just submitted instead of a
+  // blank form.
   useEffect(() => {
     if (!open) return;
+    setTopic(card?.topic ?? "");
+    setCategoryIds(card?.categoryIds ?? []);
+    setItems(toDraftItems(card));
+    setNewCategoryName("");
+    setCategoryNameError(null);
     originalHashesRef.current = hashesOf(toDraftItems(card));
     sessionCreatedHashesRef.current = new Set();
   }, [open, card]);

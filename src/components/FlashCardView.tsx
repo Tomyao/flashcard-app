@@ -115,7 +115,7 @@ interface AnswerBlockProps {
  * content rather than stretching to fill whatever space is available. */
 function AnswerBlock({ answer, photo }: AnswerBlockProps) {
   return (
-    <div className="mt-2 flex flex-col items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+    <div className="mt-2 flex flex-col items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-700/60">
       <p
         className={`text-base font-medium text-text-primary-light dark:text-text-primary-dark ${
           isShortAnswer(answer) ? "text-center" : "w-full text-left"
