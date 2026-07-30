@@ -5,6 +5,7 @@ import { NO_CATEGORY_ID } from "../types";
 import * as db from "../db/db";
 import { compressImage, hashBlob } from "../lib/imageCompression";
 import { useLocalPhotoUrl } from "../hooks/useLocalPhotoUrl";
+import { useBackdropClose } from "../hooks/useBackdropClose";
 
 interface DraftItem {
   id: string;
@@ -211,6 +212,8 @@ export function CardEditorModal({
     sessionCreatedHashesRef.current = new Set();
   }, [open, card]);
 
+  const backdrop = useBackdropClose(resetAndClose);
+
   if (!open) return null;
 
   const customCategories = categories.filter((c) => !c.isDefault);
@@ -345,7 +348,7 @@ export function CardEditorModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={resetAndClose}
+      {...backdrop}
     >
       <div
         className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-surface-light shadow-xl dark:border-slate-700 dark:bg-surface-dark"

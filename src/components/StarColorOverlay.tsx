@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pencil, Plus, Star, Trash2, X } from "lucide-react";
 import type { StarColor } from "../types";
+import { useBackdropClose } from "../hooks/useBackdropClose";
 
 interface StarColorOverlayProps {
   open: boolean;
@@ -119,12 +120,14 @@ export function StarColorOverlay({
   const [newColor, setNewColor] = useState("#4f46e5");
   const [nameError, setNameError] = useState<string | null>(null);
 
+  const backdrop = useBackdropClose(onClose);
+
   if (!open) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+      {...backdrop}
     >
       <div
         className="w-full max-w-md rounded-2xl border border-slate-200 bg-surface-light p-5 shadow-xl dark:border-slate-700 dark:bg-surface-dark"

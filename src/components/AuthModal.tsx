@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
+import { useBackdropClose } from "../hooks/useBackdropClose";
 
 interface AuthModalProps {
   open: boolean;
@@ -18,6 +19,8 @@ export function AuthModal({ open, onClose, onLogin, onRegister, onSuccess }: Aut
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const backdrop = useBackdropClose(close);
 
   if (!open) return null;
 
@@ -66,7 +69,7 @@ export function AuthModal({ open, onClose, onLogin, onRegister, onSuccess }: Aut
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={close}
+      {...backdrop}
     >
       <div
         className="w-full max-w-sm rounded-2xl border border-slate-200 bg-surface-light shadow-xl dark:border-slate-700 dark:bg-surface-dark"
