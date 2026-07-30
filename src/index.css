@@ -27,6 +27,15 @@ body,
   height: 100%;
 }
 
+html,
+body {
+  /* The card stack's own swipe area isn't itself a scroll container (its
+     "scrolling" is entirely JS-driven), so overscroll-behavior on it does
+     nothing -- the boundary bounce that triggers pull-to-refresh happens
+     on the actual document scrolling element, here. */
+  overscroll-behavior-y: contain;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
