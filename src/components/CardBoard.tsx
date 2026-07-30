@@ -6,7 +6,7 @@ interface CardBoardProps {
   cards: FlashCard[];
   categories: Category[];
   starColors: StarColor[];
-  selectedCategoryId: string;
+  selectedCategoryIds: Set<string>;
   starFilter: StarFilterState;
   onToggleCardStar: (cardId: string) => void;
   onToggleQuestionStar: (cardId: string, qaId: string) => void;
@@ -43,17 +43,25 @@ function matchesStarFilter(card: FlashCard, filter: StarFilterState): boolean {
   }
 }
 
-function matchesCategory(card: FlashCard, categoryId: string): boolean {
-  return categoryId === NO_CATEGORY_ID
-    ? card.categoryIds.length === 0
-    : card.categoryIds.includes(categoryId);
+/** A card must belong to every selected category to match -- an empty
+ * selection means "All Flashcards" (no filtering). */
+function matchesCategory(card: FlashCard, categoryIds: Set<string>): boolean {
+  if (categoryIds.size === 0) return true;
+  for (const categoryId of categoryIds) {
+    const inCategory =
+      categoryId === NO_CATEGORY_ID
+        ? card.categoryIds.length === 0
+        : card.categoryIds.includes(categoryId);
+    if (!inCategory) return false;
+  }
+  return true;
 }
 
 export function CardBoard({
   cards,
   categories,
   starColors,
-  selectedCategoryId,
+  selectedCategoryIds,
   starFilter,
   onToggleCardStar,
   onToggleQuestionStar,
@@ -62,9 +70,7 @@ export function CardBoard({
 }: CardBoardProps) {
   const deck = cards
     .filter((c) => matchesStarFilter(c, starFilter))
-    .filter((c) =>
-      selectedCategoryId === "all" ? true : matchesCategory(c, selectedCategoryId),
-    );
+    .filter((c) => matchesCategory(c, selectedCategoryIds));
 
   const starFilterActive = starFilter.colorIds.size > 0 || starFilter.unstarred;
 
@@ -72,7 +78,7 @@ export function CardBoard({
     return <EmptyState starFilterActive={starFilterActive} />;
   }
 
-  const resetKey = `${selectedCategoryId}|${starFilter.scope}|${starFilter.unstarred}|${[...starFilter.colorIds].sort().join(",")}`;
+  const resetKey = `${[...selectedCategoryIds].sort().join(",")}|${starFilter.scope}|${starFilter.unstarred}|${[...starFilter.colorIds].sort().join(",")}`;
 
   return (
     <CardStack

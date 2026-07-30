@@ -4,8 +4,9 @@ import { StarFilterDropdown } from "./StarFilterDropdown";
 
 interface FilterBarProps {
   categories: Category[];
-  selectedCategoryId: string;
-  onSelectCategory: (id: string) => void;
+  selectedCategoryIds: Set<string>;
+  onToggleCategory: (id: string) => void;
+  onSelectAllCategories: () => void;
   onDeleteCategory: (id: string) => void;
   starColors: StarColor[];
   starFilter: StarFilterState;
@@ -18,8 +19,9 @@ interface FilterBarProps {
 
 export function FilterBar({
   categories,
-  selectedCategoryId,
-  onSelectCategory,
+  selectedCategoryIds,
+  onToggleCategory,
+  onSelectAllCategories,
   onDeleteCategory,
   starColors,
   starFilter,
@@ -33,8 +35,9 @@ export function FilterBar({
     <div className="flex items-center gap-2">
       <CategoryDropdown
         categories={categories}
-        selectedCategoryId={selectedCategoryId}
-        onSelectCategory={onSelectCategory}
+        selectedCategoryIds={selectedCategoryIds}
+        onToggleCategory={onToggleCategory}
+        onSelectAllCategories={onSelectAllCategories}
         onDeleteCategory={onDeleteCategory}
       />
 

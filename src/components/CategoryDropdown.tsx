@@ -4,15 +4,17 @@ import type { Category } from "../types";
 
 interface CategoryDropdownProps {
   categories: Category[];
-  selectedCategoryId: string;
-  onSelectCategory: (id: string) => void;
+  selectedCategoryIds: Set<string>;
+  onToggleCategory: (id: string) => void;
+  onSelectAllCategories: () => void;
   onDeleteCategory: (id: string) => void;
 }
 
 export function CategoryDropdown({
   categories,
-  selectedCategoryId,
-  onSelectCategory,
+  selectedCategoryIds,
+  onToggleCategory,
+  onSelectAllCategories,
   onDeleteCategory,
 }: CategoryDropdownProps) {
   const [open, setOpen] = useState(false);
@@ -36,11 +38,6 @@ export function CategoryDropdown({
     };
   }, [open]);
 
-  const selectedLabel =
-    selectedCategoryId === "all"
-      ? "All Categories"
-      : (categories.find((c) => c.id === selectedCategoryId)?.name ?? "All Categories");
-
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -54,7 +51,7 @@ export function CategoryDropdown({
           size={14}
           className="text-text-secondary-light dark:text-text-secondary-dark"
         />
-        {selectedLabel}
+        Categories
         <ChevronDown
           size={14}
           className={`text-text-secondary-light transition-transform dark:text-text-secondary-dark ${open ? "rotate-180" : ""}`}
@@ -67,22 +64,16 @@ export function CategoryDropdown({
           className="absolute left-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-slate-200 bg-surface-light py-1 shadow-lg dark:border-slate-700 dark:bg-surface-dark"
         >
           <DropdownItem
-            label="All Categories"
-            active={selectedCategoryId === "all"}
-            onSelect={() => {
-              onSelectCategory("all");
-              setOpen(false);
-            }}
+            label="All Flashcards"
+            active={selectedCategoryIds.size === 0}
+            onSelect={onSelectAllCategories}
           />
           {categories.map((cat) => (
             <DropdownItem
               key={cat.id}
               label={cat.name}
-              active={selectedCategoryId === cat.id}
-              onSelect={() => {
-                onSelectCategory(cat.id);
-                setOpen(false);
-              }}
+              active={selectedCategoryIds.has(cat.id)}
+              onSelect={() => onToggleCategory(cat.id)}
               onDelete={
                 cat.isDefault
                   ? undefined
@@ -116,17 +107,23 @@ function DropdownItem({
       aria-selected={active}
       className={`group flex items-center gap-1 px-1.5 ${active ? "bg-action/10" : "hover:bg-slate-100 dark:hover:bg-slate-800"}`}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        className={`flex-1 cursor-pointer truncate rounded-md px-2 py-1.5 text-left text-sm font-medium ${
-          active
-            ? "text-action"
-            : "text-text-primary-light dark:text-text-primary-dark"
-        }`}
-      >
-        {label}
-      </button>
+      <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium">
+        <input
+          type="checkbox"
+          checked={active}
+          onChange={onSelect}
+          className="shrink-0 cursor-pointer accent-action"
+        />
+        <span
+          className={`min-w-0 flex-1 truncate ${
+            active
+              ? "text-action"
+              : "text-text-primary-light dark:text-text-primary-dark"
+          }`}
+        >
+          {label}
+        </span>
+      </label>
       {onDelete && (
         <button
           type="button"

@@ -12,6 +12,7 @@ import { useAuth } from "./context/AuthContext";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useBackupSync } from "./hooks/useBackupSync";
 import { useSaveStatusIndicator } from "./hooks/useSaveStatusIndicator";
+import { NO_CATEGORY_ID } from "./types";
 import type { FlashCard, StarFilterState } from "./types";
 
 function App() {
@@ -23,7 +24,11 @@ function App() {
   const sync = useBackupSync({ data, auth, onToast: setToastMessage });
   const saveIndicator = useSaveStatusIndicator(sync.status, sync.lastSavedAt, !!auth.user);
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState("all");
+  /** Empty means "All Flashcards" -- no category filtering. Otherwise a card
+   * must belong to every selected category to match. */
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [starFilter, setStarFilter] = useState<StarFilterState>({
     colorIds: new Set(),
     scope: "both",
@@ -66,12 +71,32 @@ function App() {
     if (!category) return;
     if (
       window.confirm(
-        `Delete category "${category.name}"? Cards in it will move to No Category.`,
+        `Delete category "${category.name}"? Cards in it will lose this category (moving to No Category if it was their only one).`,
       )
     ) {
       void data.removeCategory(categoryId);
-      if (selectedCategoryId === categoryId) setSelectedCategoryId("all");
+      setSelectedCategoryIds((prev) => {
+        if (!prev.has(categoryId)) return prev;
+        const next = new Set(prev);
+        next.delete(categoryId);
+        return next;
+      });
     }
+  }
+
+  /** "No Category" is exclusive with every other category -- a card can't
+   * simultaneously have zero categories and belong to a specific one -- so
+   * selecting either clears the other's checkmark. Any other category just
+   * toggles membership in the AND-filter set. */
+  function toggleCategoryFilter(categoryId: string) {
+    setSelectedCategoryIds((prev) => {
+      if (categoryId === NO_CATEGORY_ID) return new Set([NO_CATEGORY_ID]);
+      const next = new Set(prev);
+      next.delete(NO_CATEGORY_ID);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
+      return next;
+    });
   }
 
   function handleDeleteStarColor(id: string) {
@@ -139,8 +164,9 @@ function App() {
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <FilterBar
           categories={data.categories}
-          selectedCategoryId={selectedCategoryId}
-          onSelectCategory={setSelectedCategoryId}
+          selectedCategoryIds={selectedCategoryIds}
+          onToggleCategory={toggleCategoryFilter}
+          onSelectAllCategories={() => setSelectedCategoryIds(new Set())}
           onDeleteCategory={handleDeleteCategory}
           starColors={data.starColors}
           starFilter={starFilter}
@@ -166,7 +192,7 @@ function App() {
             cards={data.cards}
             categories={data.categories}
             starColors={data.starColors}
-            selectedCategoryId={selectedCategoryId}
+            selectedCategoryIds={selectedCategoryIds}
             starFilter={starFilter}
             onToggleCardStar={(cardId) => void data.toggleCardStar(cardId)}
             onToggleQuestionStar={(cardId, qaId) =>
@@ -223,7 +249,7 @@ function App() {
             // The restored data may not contain the currently selected
             // category/star colors, so drop back to the unfiltered view
             // rather than risk pointing at ids that no longer exist.
-            setSelectedCategoryId("all");
+            setSelectedCategoryIds(new Set());
             setStarFilter({ colorIds: new Set(), scope: "both", unstarred: false });
           }}
           onKeepLocal={() => sync.resolveConflict("keepLocal")}
