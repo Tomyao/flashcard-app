@@ -5,7 +5,6 @@ import { NO_CATEGORY_ID } from "../types";
 import * as db from "../db/db";
 import { compressImage, hashBlob } from "../lib/imageCompression";
 import { useLocalPhotoUrl } from "../hooks/useLocalPhotoUrl";
-import { useBackdropClose } from "../hooks/useBackdropClose";
 
 interface DraftItem {
   id: string;
@@ -105,12 +104,13 @@ interface AutoGrowTextareaProps {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  required?: boolean;
 }
 
 /** A single-line-by-default textarea that grows to fit its content, so a
  * long question or answer stays fully readable instead of scrolling off
  * to the side the way a single-line input would. */
-function AutoGrowTextarea({ value, onChange, placeholder }: AutoGrowTextareaProps) {
+function AutoGrowTextarea({ value, onChange, placeholder, required }: AutoGrowTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
@@ -127,6 +127,7 @@ function AutoGrowTextarea({ value, onChange, placeholder }: AutoGrowTextareaProp
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      required={required}
       className="w-full resize-none overflow-hidden rounded-md border border-slate-200 bg-transparent px-2.5 py-1.5 text-sm text-text-primary-light focus:border-action focus:outline-none dark:border-slate-700 dark:text-text-primary-dark"
     />
   );
@@ -222,8 +223,6 @@ export function CardEditorModal({
     originalHashesRef.current = hashesOf(toDraftItems(card));
     sessionCreatedHashesRef.current = new Set();
   }, [open, card]);
-
-  const backdrop = useBackdropClose(resetAndClose);
 
   if (!open) return null;
 
@@ -357,14 +356,8 @@ export function CardEditorModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      {...backdrop}
-    >
-      <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-surface-light shadow-xl dark:border-slate-700 dark:bg-surface-dark"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-surface-light shadow-xl dark:border-slate-700 dark:bg-surface-dark">
         <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-slate-700">
           <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
             {card ? "Edit Flashcard" : "New Flashcard"}
@@ -477,6 +470,7 @@ export function CardEditorModal({
                         value={item.question}
                         onChange={(value) => updateItem(item.id, "question", value)}
                         placeholder="Question"
+                        required
                       />
                       <PhotoField
                         label="question"
@@ -490,6 +484,7 @@ export function CardEditorModal({
                         value={item.answer}
                         onChange={(value) => updateItem(item.id, "answer", value)}
                         placeholder="Answer"
+                        required
                       />
                       <PhotoField
                         label="answer"
