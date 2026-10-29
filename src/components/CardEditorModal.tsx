@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Image as ImageIcon, Plus, Trash2, X } from "lucide-react";
 import type { Category, FlashCard, Photo } from "../types";
 import { NO_CATEGORY_ID } from "../types";
 import * as db from "../db/db";
 import { compressImage, hashBlob } from "../lib/imageCompression";
 import { useLocalPhotoUrl } from "../hooks/useLocalPhotoUrl";
+import { RichTextField } from "./RichTextField";
+import { isCardTextBlank } from "../lib/cardText";
 
 interface DraftItem {
   id: string;
@@ -97,39 +99,6 @@ function PhotoField({ label, photo, onAttach, onRemove }: PhotoFieldProps) {
         </button>
       )}
     </div>
-  );
-}
-
-interface AutoGrowTextareaProps {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  required?: boolean;
-}
-
-/** A single-line-by-default textarea that grows to fit its content, so a
- * long question or answer stays fully readable instead of scrolling off
- * to the side the way a single-line input would. */
-function AutoGrowTextarea({ value, onChange, placeholder, required }: AutoGrowTextareaProps) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
-
-  return (
-    <textarea
-      ref={ref}
-      rows={1}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      required={required}
-      className="w-full resize-none overflow-hidden rounded-md border border-slate-200 bg-transparent px-2.5 py-1.5 text-sm text-text-primary-light focus:border-action focus:outline-none dark:border-slate-700 dark:text-text-primary-dark"
-    />
   );
 }
 
@@ -348,7 +317,7 @@ export function CardEditorModal({
         questionPhoto: item.questionPhoto,
         answerPhoto: item.answerPhoto,
       }))
-      .filter((item) => item.question && item.answer);
+      .filter((item) => !isCardTextBlank(item.question) && !isCardTextBlank(item.answer));
     if (cleanItems.length === 0) return;
     sweepAbandonedSessionPhotos(cleanItems);
     onSave({ topic: cleanTopic, categoryIds, items: cleanItems });
@@ -466,7 +435,7 @@ export function CardEditorModal({
                   </span>
                   <div className="min-w-0 flex-1 space-y-2">
                     <div>
-                      <AutoGrowTextarea
+                      <RichTextField
                         value={item.question}
                         onChange={(value) => updateItem(item.id, "question", value)}
                         placeholder="Question"
@@ -480,7 +449,7 @@ export function CardEditorModal({
                       />
                     </div>
                     <div>
-                      <AutoGrowTextarea
+                      <RichTextField
                         value={item.answer}
                         onChange={(value) => updateItem(item.id, "answer", value)}
                         placeholder="Answer"

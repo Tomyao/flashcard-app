@@ -5,6 +5,8 @@ import type { Category, FlashCard, Photo, StarColor } from "../types";
 import { StarButton } from "./StarButton";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { useLocalPhotoUrl } from "../hooks/useLocalPhotoUrl";
+import { FormattedText } from "./FormattedText";
+import { cardTextToPlain } from "../lib/cardText";
 
 /** Below this length (after trimming), an answer reads as a caption -- a
  * single word or short phrase -- and looks better centered under its photo
@@ -13,7 +15,7 @@ import { useLocalPhotoUrl } from "../hooks/useLocalPhotoUrl";
 const SHORT_ANSWER_MAX_LENGTH = 20;
 
 function isShortAnswer(answer: string): boolean {
-  return answer.trim().length <= SHORT_ANSWER_MAX_LENGTH;
+  return cardTextToPlain(answer).trim().length <= SHORT_ANSWER_MAX_LENGTH;
 }
 
 interface PhotoThumbProps {
@@ -88,7 +90,9 @@ function QuestionBlock({
     <div>
       <div className="flex items-start gap-2">
         <span className="shrink-0 text-sm font-medium text-action">{number}.</span>
-        <p className={`flex-1 ${textClassName}`}>{question}</p>
+        <div className={`min-w-0 flex-1 ${textClassName}`}>
+          <FormattedText text={question} />
+        </div>
         <StarButton
           starColorId={starColorId}
           starColors={starColors}
@@ -116,13 +120,13 @@ interface AnswerBlockProps {
 function AnswerBlock({ answer, photo }: AnswerBlockProps) {
   return (
     <div className="mt-2 flex flex-col items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-700/60">
-      <p
+      <div
         className={`text-base font-medium text-text-primary-light dark:text-text-primary-dark ${
           isShortAnswer(answer) ? "text-center" : "w-full text-left"
         }`}
       >
-        {answer}
-      </p>
+        <FormattedText text={answer} />
+      </div>
       <PhotoThumb photo={photo} />
     </div>
   );

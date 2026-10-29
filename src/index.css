@@ -77,3 +77,47 @@ body {
     transition: none;
   }
 }
+
+/* Formatted question/answer text -- shared by the card display
+   (FormattedText) and the editor (RichTextField), so both look the same.
+   Tailwind's reset strips list markers and paragraph spacing, so they're
+   restored here. */
+.rich-text p + p,
+.rich-text p + ul,
+.rich-text p + ol,
+.rich-text ul + p,
+.rich-text ol + p {
+  margin-top: 0.5em;
+}
+
+.rich-text ul,
+.rich-text ol {
+  padding-left: 1.25em;
+  text-align: left;
+}
+
+.rich-text ul {
+  list-style: disc;
+}
+
+.rich-text ol {
+  list-style: decimal;
+}
+
+.rich-text strong {
+  font-weight: 700;
+}
+
+.rich-text a {
+  color: var(--color-action);
+  text-decoration: underline;
+}
+
+/* Placeholder text for an empty editor (Tiptap's Placeholder extension). */
+.rich-text p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-slate-400);
+}
